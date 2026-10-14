@@ -194,6 +194,13 @@ int main() {
     run({no}); tapTile(S_SCORES); CHECK(hiGet(0) == 77, "settings: Scores tile asks first; CANCEL keeps the scores");
     run({yes}); tapTile(S_SCORES); CHECK(hiGet(0) == 0, "settings: Scores tile: DELETE clears the scores");
     gDiff = (uint8_t)diff0;
+    // red/blue order (ST7789 build only: this test is compiled with HUB_VARIANT "st7789")
+    gBgr = false; gFlip = false; applyDisplaySettings();
+    CHECK(tft.lastCmd == 0x36 && tft.lastData == 0x60, "colour order: RGB landscape writes MADCTL 0x60");
+    tapTile(S_ORDER); CHECK(gBgr && tft.lastData == 0x68, "colour order: Red/Blue tile switches to BGR (0x68)");
+    gFlip = true; applyDisplaySettings(); CHECK(tft.lastData == 0xA8, "colour order: flipped rotation keeps BGR (0xA8)");
+    gFlip = false; tapTile(S_ORDER); CHECK(!gBgr && tft.lastData == 0x60, "colour order: back to RGB");
+    gBgr = false; settingsSave(); gBgr = true; settingsLoad(); CHECK(!gBgr, "colour order: saved with the settings");
     // a tap in the gaps / below the grid / on MENU
     touch = TouchState{false, false, true, true, -1, 6 + 73 + 2, 60, 79, 60, 0, 0}; settingsTickScreen();
     touch = TouchState{false, false, true, true, -1, 310, 5, 310, 5, 0, 0}; settingsTickScreen();

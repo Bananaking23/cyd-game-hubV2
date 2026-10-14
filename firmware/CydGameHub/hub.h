@@ -363,6 +363,7 @@
 #undef S_DIFF
 #undef S_FLIP
 #undef S_INVERT
+#undef S_ORDER
 #undef S_SCORES
 #undef S_SOUND
 #undef S_WIFI
@@ -441,6 +442,7 @@ static Preferences prefs;
 static bool    gSound  = true;
 static bool    gFlip   = false;   // rotate display 180 degrees
 static bool    gInvert = false;   // invertDisplay
+static bool    gBgr    = false;   // swap red/blue (display colour order); only used by the ST7789 build
 static uint8_t gBright = 3;       // 1..4
 static uint8_t gDiff   = 1;       // difficulty: 0 easy, 1 normal, 2 hard (games read it in init())
 static const char* const DIFF_NAMES[3] = {"EASY", "NORMAL", "HARD"};
@@ -568,6 +570,7 @@ static void settingsLoad() {
   gSound  = prefs.getBool("snd", true);
   gFlip   = prefs.getBool("flip", false);
   gInvert = prefs.getBool("inv", false);
+  gBgr    = prefs.getBool("bgr", false);
   gBright = (uint8_t)clampi(prefs.getUChar("bri", 3), 1, 4);
   gDiff   = (uint8_t)clampi(prefs.getUChar("diff", 1), 0, 2);
 }
@@ -575,6 +578,7 @@ static void settingsSave() {
   prefs.putBool("snd", gSound);
   prefs.putBool("flip", gFlip);
   prefs.putBool("inv", gInvert);
+  prefs.putBool("bgr", gBgr);
   prefs.putUChar("bri", gBright);
   prefs.putUChar("diff", gDiff);
 }

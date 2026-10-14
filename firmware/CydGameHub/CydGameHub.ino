@@ -89,8 +89,10 @@ static void launch(int idx) {
 }
 
 // ------------------------------------------------------------------ settings (a grid of tiles, like the game menu)
-static const int SET_ITEMS = 10, SET_COLS = 4, SET_TW = 73, SET_TH = 66, SET_GAP = 5, SET_X0 = 6, SET_Y0 = 28;
-enum { S_SOUND = 0, S_BRIGHT, S_DIFF, S_FLIP, S_INVERT, S_CALIB, S_SCORES, S_WIFI, S_CLOCK, S_CLOCKSET };
+static const int SET_ITEMS = 11, SET_COLS = 4, SET_TW = 73, SET_TH = 66, SET_GAP = 5, SET_X0 = 6, SET_Y0 = 28;
+enum { S_SOUND = 0, S_BRIGHT, S_DIFF, S_FLIP, S_INVERT, S_CALIB, S_SCORES, S_WIFI, S_CLOCK, S_CLOCKSET, S_ORDER };
+
+static bool isSt7789() { return strcmp(HUB_VARIANT, "st7789") == 0; }
 
 static void settingTileRect(int i, int* x, int* y) {
   *x = SET_X0 + (i % SET_COLS) * (SET_TW + SET_GAP);
@@ -107,13 +109,14 @@ static void settingLabel(int i, char* out, size_t n) {
     case S_SCORES:   snprintf(out, n, "CLEAR"); break;
     case S_WIFI:     snprintf(out, n, "OPEN"); break;
     case S_CLOCK:    snprintf(out, n, "START"); break;
-    default:         snprintf(out, n, "SET UP"); break;
+    case S_CLOCKSET: snprintf(out, n, "SET UP"); break;
+    default:         snprintf(out, n, "%s", isSt7789() ? (gBgr ? "BGR" : "RGB") : "-"); break;
   }
 }
 static void drawSettingTile(int i) {
   static const char* const names[SET_ITEMS] = {"Sound", "Brightness", "Difficulty", "Rotation", "Invert", "Calibrate",
-                                               "Scores", "Wi-Fi", "Clock", "Clock style"};
-  static const uint16_t accent[SET_ITEMS] = {C_GREEN, C_YELLOW, C_YELLOW, C_CYAN, C_MAGENTA, C_ORANGE, C_RED, C_BLUE, C_GOLD, C_PINK};
+                                               "Scores", "Wi-Fi", "Clock", "Clock style", "Red/Blue"};
+  static const uint16_t accent[SET_ITEMS] = {C_GREEN, C_YELLOW, C_YELLOW, C_CYAN, C_MAGENTA, C_ORANGE, C_RED, C_BLUE, C_GOLD, C_PINK, C_TEAL};
   int x, y;
   settingTileRect(i, &x, &y);
   uint16_t col = (i == S_DIFF) ? diffColor() : accent[i];
@@ -138,6 +141,10 @@ static void drawSettings() {
 static void applyDisplaySettings() {
   tft.setRotation(gFlip ? 3 : 1);
   tft.invertDisplay(gInvert);
+  if (isSt7789()) {   // same value TFT_eSPI writes for this rotation, plus our own red/blue order bit
+    tft.writecommand(0x36);
+    tft.writedata((uint8_t)((gFlip ? 0xA0 : 0x60) | (gBgr ? 0x08 : 0)));
+  }
   applyBrightness();
 }
 
@@ -190,12 +197,18 @@ static void settingsTap(int i) {
       clockRun(false);
       drawSettings();
       return;
-    default:
+    case S_CLOCKSET:
       beep(800, 20);
       touchClear();
       clockCustomise();
       drawSettings();
       return;
+    default:   // S_ORDER: red/blue order, ST7789 build only
+      if (!isSt7789()) { beep(300, 60); return; }
+      gBgr = !gBgr;
+      applyDisplaySettings();
+      drawSettings();     // the whole screen is repainted so the new colours are visible straight away
+      break;
   }
   settingsSave();
   drawSettingTile(i);

@@ -27,6 +27,7 @@ class TFT_eSPI : public Print {
   static int imin_(int a, int b) { return a < b ? a : b; }
  public:
   TFT_eSPI(int16_t = 240, int16_t = 320) {}
+  uint8_t lastCmd = 0, lastData = 0; void writecommand(uint8_t c) { lastCmd = c; } void writedata(uint8_t d) { lastData = d; }
   void init(uint8_t = 0) {} void begin(uint8_t = 0) {} void setRotation(uint8_t) {} void invertDisplay(bool) {}
   int16_t width() { return 320; } int16_t height() { return 240; }
   void fillScreen(uint32_t c) { box(0, 0, 320, 240, c); }

@@ -62,7 +62,7 @@ once the time is known.
 | `ili9341` | the common single micro-USB CYD | `ILI9341_2_DRIVER` |
 | `st7789`  | newer revision with USB-C + micro-USB | `ST7789_DRIVER` |
 
-If you see a white / garbled screen, flash the other variant. Inverted colours: **Settings -> Invert colours**.
+If you see a white / garbled screen, flash the other variant. Wrong colours: **Settings -> Invert** (photo-negative look) and, on the 2-USB build, **Settings -> Red/Blue** (RGB/BGR order; try the four combinations).
 TFT_eSPI is configured entirely through build flags in `tools/build.py` (no `User_Setup.h` editing).
 
 ## Using it

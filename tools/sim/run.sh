@@ -7,5 +7,5 @@ g++ $FLAGS tools/sim/sim_main.cpp tools/sim/sim_bundle.cpp -o /tmp/cydsim || exi
 timeout 900 /tmp/cydsim "${1:-4000}" || exit 1
 g++ $FLAGS -DUPDATE_BASE_URL='"https://example.invalid/cyd-game-hub/"' tools/sim/net_test.cpp tools/sim/sim_bundle.cpp -o /tmp/cydnet || exit 1
 timeout 300 /tmp/cydnet
-g++ $FLAGS tools/sim/clock_test.cpp tools/sim/sim_bundle.cpp -o /tmp/cydclock || exit 1
+g++ $FLAGS -DHUB_VARIANT='"st7789"' tools/sim/clock_test.cpp tools/sim/sim_bundle.cpp -o /tmp/cydclock || exit 1
 timeout 300 /tmp/cydclock
