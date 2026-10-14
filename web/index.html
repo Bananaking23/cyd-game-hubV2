@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CYD Game Hub Flasher</title>
+<meta name="description" content="Flash 19 touch games onto a 2.8-inch resistive-touch Cheap Yellow Display straight from your browser.">
+<script type="module" src="https://unpkg.com/esp-web-tools@10.0.1/dist/web/install-button.js?module"></script>
+<style>
+  :root {
+    --bg: #0e1117; --panel: #161b26; --panel2: #1c2333; --line: #2a3347;
+    --text: #e8ecf4; --mute: #98a2b8; --accent: #ffd23f; --ok: #46d18a; --bad: #ff6b6b;
+    color-scheme: dark;
+  }
+  :root[data-theme="light"] {
+    --bg: #f5f6fa; --panel: #ffffff; --panel2: #eef1f7; --line: #d6dbe7;
+    --text: #151a26; --mute: #5b667d; --accent: #b87900; --ok: #12814d; --bad: #c0392b;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #f5f6fa; --panel: #ffffff; --panel2: #eef1f7; --line: #d6dbe7;
+      --text: #151a26; --mute: #5b667d; --accent: #b87900; --ok: #12814d; --bad: #c0392b;
+      color-scheme: light;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 32px 16px 64px; }
+  header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+  h1 { font-size: clamp(28px, 6vw, 44px); line-height: 1.1; margin: 0 0 8px; letter-spacing: -0.02em; }
+  h1 span { color: var(--accent); }
+  .lead { color: var(--mute); margin: 0 0 28px; max-width: 60ch; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .12em; color: var(--mute); margin: 36px 0 12px; font-weight: 600; }
+  .theme { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; cursor: pointer; font: inherit; font-size: 14px; }
+  .theme:hover { border-color: var(--accent); }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 20px; display: flex; flex-direction: column; gap: 10px; }
+  .card h3 { margin: 0; font-size: 18px; }
+  .card p { margin: 0; color: var(--mute); font-size: 15px; }
+  .card .spacer { flex: 1; }
+  .status { font-size: 13px; min-height: 20px; }
+  .status.ok { color: var(--ok); }
+  .status.bad { color: var(--bad); }
+  esp-web-install-button { display: block; }
+  esp-web-install-button button.flash {
+    width: 100%; background: var(--accent); color: #1a1500; border: 0; border-radius: 10px;
+    font: inherit; font-weight: 700; padding: 13px 16px; cursor: pointer; min-height: 48px;
+  }
+  esp-web-install-button button.flash:hover { filter: brightness(1.08); }
+  esp-web-install-button button.flash[disabled] { opacity: .45; cursor: not-allowed; }
+  esp-web-install-button:not(:defined) [slot=unsupported], esp-web-install-button:not(:defined) [slot=not-allowed] { display: none; }
+  .warn { background: color-mix(in srgb, var(--bad) 14%, var(--panel)); border: 1px solid var(--bad); border-radius: 12px; padding: 14px 16px; margin: 0 0 20px; display: none; }
+  .warn.show { display: block; }
+  .warn code { background: var(--panel2); padding: 1px 6px; border-radius: 5px; }
+  .games { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; list-style: none; padding: 0; margin: 0; }
+  .games li { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--c, var(--accent)); border-radius: 8px; padding: 10px 12px; }
+  .games b { display: block; font-size: 15px; }
+  .games small { color: var(--mute); font-size: 13px; }
+  ol.steps { padding-left: 22px; margin: 0; }
+  ol.steps li { margin: 8px 0; }
+  details { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; margin: 8px 0; }
+  summary { cursor: pointer; font-weight: 600; }
+  details p { color: var(--mute); margin: 8px 0 0; }
+  kbd { background: var(--panel2); border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; font-size: 13px; }
+  footer { margin-top: 40px; color: var(--mute); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>CYD <span>Game Hub</span></h1>
+      <p class="lead">19 touch games for the 2.8&Prime; resistive-touch Cheap Yellow Display. Plug the board in with a USB cable, press a button, done. Nothing to install.</p>
+    </div>
+    <button class="theme" id="theme" type="button" aria-label="Toggle light or dark theme">Theme</button>
+  </header>
+
+  <div class="warn" id="nobrowser">
+    <b>This browser can't flash over USB.</b> Web Serial is only available in desktop <b>Chrome</b> or <b>Edge</b>.
+    (Firefox and Safari don't support it, and neither do phones.)
+  </div>
+  <div class="warn" id="nofw">
+    <b>The firmware files aren't here yet.</b> Run <code>python tools/build.py</code> once (it needs <code>arduino-cli</code>), or push this repo to GitHub and let the included workflow build and publish it.
+  </div>
+
+  <h2>1 &middot; Pick your board</h2>
+  <div class="cards">
+    <div class="card">
+      <h3>Standard CYD</h3>
+      <p>The common ESP32-2432S028R with <b>one</b> USB port (micro-USB). ILI9341 display.</p>
+      <div class="spacer"></div>
+      <esp-web-install-button id="b-ili9341" manifest="manifest-ili9341.json">
+        <button slot="activate" class="flash">Flash standard CYD</button>
+        <span slot="unsupported">Use desktop Chrome or Edge to flash.</span>
+        <span slot="not-allowed">Open this page over HTTPS (or http://localhost) to flash.</span>
+      </esp-web-install-button>
+      <div class="status" id="s-ili9341"></div>
+    </div>
+    <div class="card">
+      <h3>2-USB CYD</h3>
+      <p>The newer revision with <b>USB-C and micro-USB</b>. ST7789 display. Try this one if the standard build shows a white or garbled screen.</p>
+      <div class="spacer"></div>
+      <esp-web-install-button id="b-st7789" manifest="manifest-st7789.json">
+        <button slot="activate" class="flash">Flash 2-USB CYD</button>
+        <span slot="unsupported">Use desktop Chrome or Edge to flash.</span>
+        <span slot="not-allowed">Open this page over HTTPS (or http://localhost) to flash.</span>
+      </esp-web-install-button>
+      <div class="status" id="s-st7789"></div>
+    </div>
+  </div>
+
+  <h2>2 &middot; What happens</h2>
+  <ol class="steps">
+    <li>Click the button, choose the serial port of your board (often "USB-SERIAL CH340" or "CP210x") and press <b>Install</b>.</li>
+    <li>Wait for it to reach 100% (about 30 seconds). The board restarts by itself.</li>
+    <li>On first start it asks you to touch three yellow crosshairs. That calibrates the touch panel; a stylus is more precise than a finger.</li>
+  </ol>
+
+  <h2>Wireless updates</h2>
+  <p style="color:var(--mute)">After this flash, you never need the cable again: on the board open <b>Settings &rarr; Wi-Fi &amp; updates</b>, pick your network, and press <b>Check for updates</b>. The board downloads new firmware from this site. <b>Boards flashed with an older version need this one USB flash first</b> (it changes the flash layout to make room for updates). Your Wi-Fi password is stored unencrypted on the board.</p>
+
+  <h2>The 19 games</h2>
+  <p style="color:var(--mute)">Every game has <b>Easy / Normal / Hard</b> (tap the difficulty tag in the menu header), with separate high scores for each.</p>
+  <ul class="games" id="games"></ul>
+
+  <h2>Troubleshooting</h2>
+  <details><summary>The port list is empty or the board isn't found</summary>
+    <p>Use a USB cable that carries data (some are charge-only). On Windows you may need the CH340 or CP210x driver. If connecting still fails, hold the <kbd>BOOT</kbd> button on the board while you click the flash button, and release it when "Connecting" appears.</p></details>
+  <details><summary>Colours look inverted (black is white)</summary>
+    <p>Open <b>Settings</b> in the hub and toggle <b>Invert colours</b>. If the screen is blank or full of noise, flash the other board variant instead.</p></details>
+  <details><summary>Touch lands in the wrong place or is mirrored</summary>
+    <p>Settings &rarr; <b>Calibrate touch</b>. You can also force it by holding <kbd>BOOT</kbd> while the board powers up.</p></details>
+  <details><summary>I want the screen the other way up</summary>
+    <p>Settings &rarr; <b>Screen rotation</b>. The hub stores a separate touch calibration for each orientation.</p></details>
+  <details><summary>Does flashing delete my high scores?</summary>
+    <p>No. Scores and settings live in a separate storage area and survive re-flashing. Use Settings &rarr; <b>Clear high scores</b> to reset them.</p></details>
+
+  <footer>Flashing uses <a href="https://esphome.github.io/esp-web-tools/" style="color:var(--accent)">ESP Web Tools</a> and runs entirely in your browser; the firmware is served from this same site.</footer>
+</div>
+
+<script>
+  var GAMES = [
+    ["Snake", "#2ecc71", "touch to steer"], ["Flap", "#ffd23f", "tap to flap"],
+    ["Breakout", "#ff9f1c", "drag the paddle"], ["Pong", "#35e0ff", "vs the AI"],
+    ["Invaders", "#ff4fd8", "drag + auto-fire"], ["Asteroids", "#c9ced8", "touch to aim + auto-fire"], ["Tetris", "#4f7bff", "on-screen buttons"],
+    ["2048", "#f3c85f", "swipe"], ["Simon", "#ff5252", "repeat the pattern"],
+    ["Whack", "#ff9ec7", "30-second rounds"], ["Runner", "#2bb3a3", "tap to jump"],
+    ["Tic-Tac-Toe", "#c9ced8", "vs the AI"], ["Connect 4", "#ff5252", "vs the AI"], ["Reversi", "#2ecc71", "tap to place, vs AI"],
+    ["Memory", "#a35bff", "fewest moves"], ["Minesweeper", "#8a93a6", "tap / hold to flag"],
+    ["Lights Out", "#ffd23f", "fewest moves"], ["Sudoku", "#35e0ff", "tap cell, tap number"],
+    ["Slide", "#ff9f1c", "tap to slide a line"]
+  ];
+  var ul = document.getElementById("games");
+  GAMES.forEach(function (g) {
+    var li = document.createElement("li");
+    li.style.setProperty("--c", g[1]);
+    var b = document.createElement("b"); b.textContent = g[0];
+    var s = document.createElement("small"); s.textContent = g[2];
+    li.appendChild(b); li.appendChild(s); ul.appendChild(li);
+  });
+
+  // theme toggle (remembered where storage is available)
+  (function () {
+    var root = document.documentElement, btn = document.getElementById("theme");
+    try { var t = localStorage.getItem("theme"); if (t) root.setAttribute("data-theme", t); } catch (e) {}
+    btn.addEventListener("click", function () {
+      var dark = root.getAttribute("data-theme") === "dark" ||
+        (!root.getAttribute("data-theme") && !matchMedia("(prefers-color-scheme: light)").matches);
+      var next = dark ? "light" : "dark";
+      root.setAttribute("data-theme", next);
+      try { localStorage.setItem("theme", next); } catch (e) {}
+    });
+  })();
+
+  // capability + firmware presence checks
+  if (!("serial" in navigator)) document.getElementById("nobrowser").classList.add("show");
+  var missing = 0, pending = 2;
+  ["ili9341", "st7789"].forEach(function (v) {
+    var st = document.getElementById("s-" + v), btn = document.getElementById("b-" + v);
+    fetch("manifest-" + v + ".json", { cache: "no-store" })
+      .then(function (r) { if (!r.ok) throw 0; return r.json(); })
+      .then(function (m) {
+        st.className = "status ok"; st.textContent = "Firmware v" + m.version + " ready";
+      })
+      .catch(function () {
+        missing++; st.className = "status bad"; st.textContent = "Firmware not built yet";
+        var b = btn.querySelector("button"); if (b) b.disabled = true;
+      })
+      .then(function () {
+        if (--pending === 0 && missing > 0) document.getElementById("nofw").classList.add("show");
+      });
+  });
+</script>
+</body>
+</html>
