@@ -3,7 +3,7 @@
 //
 //  Menu: tap a tile to play, swipe or use < > to change page, tap the difficulty tag to cycle
 //  EASY / NORMAL / HARD, SETTINGS for sound / brightness / difficulty / flip / invert / calibration /
-//  scores / Wi-Fi + wireless updates. In a game, tap MENU (top right) to leave.
+//  scores / Wi-Fi + wireless updates / clock screensaver. In a game, tap MENU (top right) to leave.
 //  Hold the BOOT button while powering on to force touch recalibration.
 //
 //  Build: arduino-cli with esp32:esp32 core 2.0.17 and libraries TFT_eSPI 2.5.43 + XPT2046_Touchscreen 1.4.
@@ -12,6 +12,7 @@
 #include "games.h"
 #include "version.h"
 #include "net.h"
+#include "clock.h"
 
 // ------------------------------------------------------------------ menu layout
 static const int TILE_COLS = 4, TILE_ROWS = 2, PER_PAGE = TILE_COLS * TILE_ROWS;
@@ -20,6 +21,7 @@ static const int BAR_Y = 213, BAR_H = 24;
 static int gPage = 0;
 static int gScreen = 0;            // 0 menu, 1 settings, 2 game
 static uint32_t gLastTick = 0;
+static uint32_t gLastActive = 0;     // last time the screen was touched (for the screensaver idle timer)
 
 static int pageCount() { return (NUM_GAMES + PER_PAGE - 1) / PER_PAGE; }
 
@@ -86,40 +88,51 @@ static void launch(int idx) {
   gLastTick = millis();
 }
 
-// ------------------------------------------------------------------ settings
-static const int SET_ROWS = 8, SET_Y0 = 25, SET_RH = 26;
+// ------------------------------------------------------------------ settings (a grid of tiles, like the game menu)
+static const int SET_ITEMS = 10, SET_COLS = 4, SET_TW = 73, SET_TH = 66, SET_GAP = 5, SET_X0 = 6, SET_Y0 = 28;
+enum { S_SOUND = 0, S_BRIGHT, S_DIFF, S_FLIP, S_INVERT, S_CALIB, S_SCORES, S_WIFI, S_CLOCK, S_CLOCKSET };
 
-static void settingLabel(int row, char* out, size_t n) {
-  switch (row) {
-    case 0: snprintf(out, n, "%s", gSound ? "ON" : "OFF"); break;
-    case 1: snprintf(out, n, "%d / 4", (int)gBright); break;
-    case 2: snprintf(out, n, "%s", DIFF_NAMES[gDiff]); break;
-    case 3: snprintf(out, n, "%s", gFlip ? "FLIPPED" : "NORMAL"); break;
-    case 4: snprintf(out, n, "%s", gInvert ? "ON" : "OFF"); break;
-    case 5: snprintf(out, n, "START"); break;
-    case 6: snprintf(out, n, "RESET"); break;
-    default: snprintf(out, n, "OPEN"); break;
+static void settingTileRect(int i, int* x, int* y) {
+  *x = SET_X0 + (i % SET_COLS) * (SET_TW + SET_GAP);
+  *y = SET_Y0 + (i / SET_COLS) * (SET_TH + SET_GAP);
+}
+static void settingLabel(int i, char* out, size_t n) {
+  switch (i) {
+    case S_SOUND:    snprintf(out, n, "%s", gSound ? "ON" : "OFF"); break;
+    case S_BRIGHT:   snprintf(out, n, "%d / 4", (int)gBright); break;
+    case S_DIFF:     snprintf(out, n, "%s", DIFF_NAMES[gDiff]); break;
+    case S_FLIP:     snprintf(out, n, "%s", gFlip ? "FLIPPED" : "NORMAL"); break;
+    case S_INVERT:   snprintf(out, n, "%s", gInvert ? "ON" : "OFF"); break;
+    case S_CALIB:    snprintf(out, n, "START"); break;
+    case S_SCORES:   snprintf(out, n, "CLEAR"); break;
+    case S_WIFI:     snprintf(out, n, "OPEN"); break;
+    case S_CLOCK:    snprintf(out, n, "START"); break;
+    default:         snprintf(out, n, "SET UP"); break;
   }
 }
-static void drawSettingRow(int row) {
-  static const char* names[SET_ROWS] = {"Sound", "Brightness", "Difficulty", "Screen rotation", "Invert colours",
-                                        "Calibrate touch", "Clear high scores", "Wi-Fi & updates"};
-  int y = SET_Y0 + row * SET_RH;
-  tft.fillRect(0, y, SCR_W, SET_RH, C_BLACK);
-  tft.fillRoundRect(6, y, SCR_W - 12, SET_RH - 3, 6, RGB565(22, 26, 38));
-  text(names[row], 16, y + (SET_RH - 3) / 2, 2, C_WHITE, ML_DATUM);
+static void drawSettingTile(int i) {
+  static const char* const names[SET_ITEMS] = {"Sound", "Brightness", "Difficulty", "Rotation", "Invert", "Calibrate",
+                                               "Scores", "Wi-Fi", "Clock", "Clock style"};
+  static const uint16_t accent[SET_ITEMS] = {C_GREEN, C_YELLOW, C_YELLOW, C_CYAN, C_MAGENTA, C_ORANGE, C_RED, C_BLUE, C_GOLD, C_PINK};
+  int x, y;
+  settingTileRect(i, &x, &y);
+  uint16_t col = (i == S_DIFF) ? diffColor() : accent[i];
+  tft.fillRoundRect(x, y, SET_TW, SET_TH, 8, RGB565(22, 26, 38));
+  tft.drawRoundRect(x, y, SET_TW, SET_TH, 8, col);
+  tft.fillRect(x + 3, y + 3, SET_TW - 6, 3, col);
+  uint8_t font = (tft.textWidth(names[i], 2) <= SET_TW - 6) ? 2 : 1;
+  text(names[i], x + SET_TW / 2, y + 22, font, C_WHITE, MC_DATUM);
   char b[16];
-  settingLabel(row, b, sizeof b);
-  uint16_t col = RGB565(40, 90, 150);
-  if (row == 2) col = gDiff == 0 ? RGB565(30, 120, 60) : (gDiff == 2 ? RGB565(160, 40, 50) : RGB565(150, 120, 20));
-  if (row == 6) col = RGB565(150, 40, 50);
-  if (row == 7) col = RGB565(30, 120, 80);
-  button(SCR_W - 112, y + 2, 98, SET_RH - 7, b, col);
+  settingLabel(i, b, sizeof b);
+  uint16_t vc = (i == S_DIFF || i == S_SOUND || i == S_INVERT) ? col : C_LGREY;
+  if (i == S_SOUND && !gSound) vc = C_GREY;
+  if (i == S_INVERT && !gInvert) vc = C_GREY;
+  text(b, x + SET_TW / 2, y + 46, 2, vc, MC_DATUM);
 }
 static void drawSettings() {
   gScreen = 1;
   hudBegin("Settings");
-  for (int i = 0; i < SET_ROWS; i++) drawSettingRow(i);
+  for (int i = 0; i < SET_ITEMS; i++) drawSettingTile(i);
 }
 
 static void applyDisplaySettings() {
@@ -143,34 +156,49 @@ static void clearAllScores() {
   gDiff = keep;
 }
 
-static void settingsTap(int row) {
-  switch (row) {
-    case 0: gSound = !gSound; if (gSound) beep(1200, 40); break;
-    case 1: gBright = (uint8_t)(gBright % 4 + 1); applyBrightness(); break;
-    case 2: gDiff = (uint8_t)((gDiff + 1) % 3); break;
-    case 3:
+static void settingsTap(int i) {
+  switch (i) {
+    case S_SOUND: gSound = !gSound; if (gSound) beep(1200, 40); break;
+    case S_BRIGHT: gBright = (uint8_t)(gBright % 4 + 1); applyBrightness(); break;
+    case S_DIFF: gDiff = (uint8_t)((gDiff + 1) % 3); break;
+    case S_FLIP:
       gFlip = !gFlip;
       applyDisplaySettings();
       if (!loadCalibration()) doCalibration();
-      drawSettings();
       settingsSave();
+      drawSettings();
       return;
-    case 4: gInvert = !gInvert; applyDisplaySettings(); break;
-    case 5:
+    case S_INVERT: gInvert = !gInvert; applyDisplaySettings(); break;
+    case S_CALIB:
       doCalibration();
       drawSettings();
       return;
-    case 6:
-      clearAllScores();
-      beep(500, 80);
-      break;
-    default:
+    case S_SCORES:
+      if (netAsk("CLEAR SCORES", C_RED, "Delete every score?", "(all difficulties)", "DELETE", "CANCEL")) {
+        clearAllScores();
+        beep(500, 80);
+      }
+      drawSettings();
+      return;
+    case S_WIFI:
       netScreen();
+      drawSettings();
+      return;
+    case S_CLOCK:
+      beep(800, 20);
+      touchClear();
+      clockRun(false);
+      drawSettings();
+      return;
+    default:
+      beep(800, 20);
+      touchClear();
+      clockCustomise();
       drawSettings();
       return;
   }
   settingsSave();
-  drawSettingRow(row);
+  drawSettingTile(i);
 }
 
 // ------------------------------------------------------------------ main loop pieces
@@ -201,9 +229,10 @@ static void menuTick() {
 static void settingsTickScreen() {
   if (!touch.tap) return;
   if (inRect(touch.x, touch.y, SCR_W - 56, 0, 56, HUD_H + 4)) { beep(800, 20); drawMenu(); return; }
-  for (int r = 0; r < SET_ROWS; r++) {
-    int y = SET_Y0 + r * SET_RH;
-    if (inRect(touch.x, touch.y, 6, y, SCR_W - 12, SET_RH - 1)) { settingsTap(r); return; }
+  for (int i = 0; i < SET_ITEMS; i++) {
+    int x, y;
+    settingTileRect(i, &x, &y);
+    if (inRect(touch.x, touch.y, x, y, SET_TW, SET_TH)) { settingsTap(i); return; }
   }
 }
 
@@ -213,9 +242,11 @@ void setup() {
   randomSeed(esp_random());
   prefs.begin("cydhub", false);
   settingsLoad();
-  backlightBegin();
+  clockCfgLoad();
+  clockApplyTz();
   soundBegin();
   tft.init();
+  backlightBegin();      // AFTER tft.init(): the driver must not own the backlight pin, or it would cancel the PWM
   applyDisplaySettings();
   tft.fillScreen(C_BLACK);
   text("CYD GAME HUB", SCR_W / 2, SCR_H / 2 - 12, 4, C_YELLOW, MC_DATUM);
@@ -227,6 +258,7 @@ void setup() {
   bool force = (digitalRead(0) == LOW);
   if (force || !loadCalibration()) doCalibration();
   drawMenu();
+  gLastActive = millis();
 }
 
 void loop() {
@@ -239,6 +271,7 @@ void loop() {
   }
   gLastTick = now;
   pollTouch();
+  if (touch.down || touch.pressed) gLastActive = now;
 
   if (gScreen == 2) {
     // MENU button (top right) always leaves the running game
@@ -253,5 +286,10 @@ void loop() {
     settingsTickScreen();
   } else {
     menuTick();
+    if (gScreen == 0 && clockIdleDue(now - gLastActive)) {   // nobody touched the menu for a while: start the clock
+      clockRun(true);
+      drawMenu();
+      gLastActive = gLastTick = millis();
+    }
   }
 }

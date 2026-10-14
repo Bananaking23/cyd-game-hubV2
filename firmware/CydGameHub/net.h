@@ -310,7 +310,7 @@ static bool wifiPickAndConnect() {
     button(6, 188, 60, 30, "<", RGB565(40, 50, 80));
     button(78, 188, 164, 30, "RESCAN", RGB565(40, 50, 80));
     button(254, 188, 60, 30, ">", RGB565(40, 50, 80));
-    char pg[16];
+    char pg[32];
     snprintf(pg, sizeof pg, "%d / %d", pages == 0 ? 0 : page + 1, pages);
     text(pg, SCR_W / 2, 228, 1, C_GREY, MC_DATUM);
     netWaitRelease();
@@ -381,10 +381,12 @@ static bool jsonStr(const char* js, const char* key, char* out, int cap) {
 // Root-certificate bundle that ships inside the ESP32 Arduino core (arduino-esp32 2.x calling convention).
 extern const uint8_t hubRootBundle[] asm("_binary_x509_crt_bundle_start");
 
+static time_t (*netTimeFn)(time_t*) = time;   // the clock source (a pointer only so the host tests can fake the time)
+
 static bool netSyncClock() {
   configTime(0, 0, "pool.ntp.org", "time.cloudflare.com");
   uint32_t t0 = millis();
-  while ((long)time(nullptr) < 1700000000L) {
+  while ((long)netTimeFn(nullptr) < 1700000000L) {
     delay(200);
     if (millis() - t0 > 15000) return false;
   }

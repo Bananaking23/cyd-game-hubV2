@@ -31,14 +31,27 @@ class TFT_eSPI : public Print {
   int16_t width() { return 320; } int16_t height() { return 240; }
   void fillScreen(uint32_t c) { box(0, 0, 320, 240, c); }
   void drawPixel(int32_t x, int32_t y, uint32_t c) { g_draws++; if (x < 0 || y < 0 || x >= 320 || y >= 240) g_offscreen++; px(x, y, c); }
-  void drawLine(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint32_t c) { g_draws++; if (x0 < 0 || x1 < 0 || y0 < 0 || y1 < 0 || x0 > 319 || x1 > 319 || y0 > 239 || y1 > 239) g_offscreen++; }
+  void drawLine(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint32_t c) {
+    g_draws++; if (x0 < 0 || x1 < 0 || y0 < 0 || y1 < 0 || x0 > 319 || x1 > 319 || y0 > 239 || y1 > 239) g_offscreen++;
+    int dx = x1 > x0 ? x1 - x0 : x0 - x1, dy = y1 > y0 ? y0 - y1 : y1 - y0, sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1, err = dx + dy;   // Bresenham, so screenshots show lines
+    for (int guard = 0; guard < 2000; guard++) {
+      px(x0, y0, c);
+      if (x0 == x1 && y0 == y1) break;
+      int e2 = 2 * err;
+      if (e2 >= dy) { err += dy; x0 += sx; }
+      if (e2 <= dx) { err += dx; y0 += sy; }
+    }
+  }
   void drawFastVLine(int32_t x, int32_t y, int32_t h, uint32_t c) { box(x, y, 1, h, c); }
   void drawFastHLine(int32_t x, int32_t y, int32_t w, uint32_t c) { box(x, y, w, 1, c); }
   void drawRect(int32_t x, int32_t y, int32_t w, int32_t h, uint32_t c) { g_draws++; if (w < 0 || h < 0) g_offscreen += 1000; }
   void fillRect(int32_t x, int32_t y, int32_t w, int32_t h, uint32_t c) { box(x, y, w, h, c); }
   void drawRoundRect(int32_t x, int32_t y, int32_t w, int32_t h, int32_t r, uint32_t c) { g_draws++; if (w < 0 || h < 0) g_offscreen += 1000; }
   void fillRoundRect(int32_t x, int32_t y, int32_t w, int32_t h, int32_t r, uint32_t c) { box(x, y, w, h, c); }
-  void drawCircle(int32_t x, int32_t y, int32_t r, uint32_t c) { g_draws++; if (r < 0) g_offscreen += 1000; }
+  void drawCircle(int32_t x, int32_t y, int32_t r, uint32_t c) {
+    g_draws++; if (r < 0) { g_offscreen += 1000; return; }
+    for (int a = 0; a < 720; a++) px(x + (int)(r * __builtin_cosf(a * 0.0087266f) + (a < 360 ? 0.5f : 0.5f)), y + (int)(r * __builtin_sinf(a * 0.0087266f) + 0.5f), c);
+  }
   void fillCircle(int32_t x, int32_t y, int32_t r, uint32_t c) { box(x - r, y - r, 2 * r + 1, 2 * r + 1, c); }
   void drawEllipse(int16_t, int16_t, int32_t, int32_t, uint16_t) { g_draws++; }
   void fillEllipse(int16_t x, int16_t y, int32_t rx, int32_t ry, uint16_t c) { box(x - rx, y - ry, 2 * rx + 1, 2 * ry + 1, c); }

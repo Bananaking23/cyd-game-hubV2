@@ -42,6 +42,19 @@ address unless you pass `--base-url`.
   flashed **once more over USB / the web flasher**; settings survive, high scores are reset once (scores are now per difficulty).
 * The Wi-Fi password is stored unencrypted in the board's NVS flash. Don't reuse an important password.
 
+## Clock screensaver
+
+**Settings -> Clock** shows a full-screen clock; touch anywhere to leave. **Settings -> Clock style** customises it:
+digital (seven-segment) or analog face, 12/24 hour, seconds on/off, date (off, `Wed 14 Oct`, `14/10/2026`, `10/14/2026`,
+`2026-10-14`, or the full `Wednesday 14 October`), colour, its own brightness, time zone (daylight saving is automatic) and
+**Auto-start** (starts by itself after 1 / 5 / 10 / 30 minutes without touching the menu). PREVIEW in the set-up screen
+shows the result. In the set-up list, tapping a row's name steps backwards, tapping its button steps forwards.
+
+The time comes from the internet (NTP) over the saved Wi-Fi, so set up Wi-Fi first (Settings -> Wi-Fi & updates). The board
+keeps time by itself afterwards; it needs Wi-Fi once after each power-up (done automatically when you press START) and
+re-syncs every few days. There is no battery-backed clock, so an unplugged board forgets the time. Auto-start only runs
+once the time is known.
+
 ## Which board variant?
 
 | Variant | Boards | Display driver |
@@ -55,14 +68,15 @@ TFT_eSPI is configured entirely through build flags in `tools/build.py` (no `Use
 ## Using it
 
 * Tap a tile to play; swipe or `<` `>` for more pages; **MENU** (top right) leaves a game.
-* **Settings**: Wi-Fi & updates, difficulty, sound, brightness, screen rotation (separate touch calibration per orientation), invert colours,
-  touch calibration, clear high scores. Hold **BOOT** while powering up to force touch calibration.
+* **Settings** is a grid of tiles like the game menu (tap a tile to change it, MENU to go back): Clock (START), Clock style (SET UP), Wi-Fi & updates, difficulty, sound, brightness, screen rotation (separate touch calibration per orientation), invert colours,
+  touch calibration, clear high scores (asks first). Hold **BOOT** while powering up to force touch calibration.
 * First boot asks you to touch three crosshairs (a stylus is more accurate on a resistive panel).
 
 ## Layout
 
 ```
 firmware/CydGameHub/   CydGameHub.ino (menu, settings, main loop), hub.h (touch, HUD, sound, scores),
+                       net.h (Wi-Fi, keyboard, updates), clock.h (screensaver clock),
                        games.h (registry), game_*.h (one namespace per game)
 web/                   index.html + manifests; firmware/*.bin appear after a build
 tools/build.py         build both variants -> web/

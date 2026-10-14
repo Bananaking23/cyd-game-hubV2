@@ -113,7 +113,7 @@ int main(int argc, char** argv) {
   // menu + settings screens
   for (int p = 0; p < pageCount(); p++) { gPage = p; drawMenu(); }
   drawSettings();
-  for (int r = 0; r < SET_ROWS; r++) drawSettingRow(r);
+  for (int r = 0; r < SET_ITEMS; r++) drawSettingTile(r);
   printf("\nmenu/settings render OK; sanitizer-clean run complete. bad=%d\n", bad);
   return bad ? 1 : 0;
 }
