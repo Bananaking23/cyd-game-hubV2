@@ -48,6 +48,7 @@ int main() {
     static const long stamps[] = {1767225600L, 1772323200L + 86399, 1709164800L + 43200, 1740787199L, 1711846800L, 1729994400L,
                                   1735689599L, 1760000000L, 1783000000L, 1800000000L, 1786000000L + 3599};
     int shown = 0;
+    for (int light = 0; light < 2; light++)
     for (int style = 0; style < CLK_NSTYLE; style++)
       for (int h12 = 0; h12 < 2; h12++)
         for (int secs = 0; secs < 2; secs++)
@@ -55,6 +56,7 @@ int main() {
             for (int col = 0; col < CLK_NCOL; col += 3)
               for (int tz = 0; tz < CLK_NTZ; tz += 2) {
                 gClk = ClockCfg{(uint8_t)style, (uint8_t)h12, (uint8_t)secs, (uint8_t)df, (uint8_t)col, 2, (uint8_t)tz, 0};
+                gLight = light; gCur = -1;
                 clockApplyTz();
                 bool first = true;
                 for (size_t k = 0; k < sizeof stamps / sizeof stamps[0]; k++)
@@ -66,21 +68,25 @@ int main() {
                     shown++;
                   }
               }
-    CHECK(g_offscreen == offs0, "clock: every style/format/zone draws only inside the screen");
+    gLight = false;
+    CHECK(g_offscreen == offs0, "clock: every style/format/zone/theme draws only inside the screen");
     printf("      (%d frames rendered)\n", shown);
   }
-  // 2. layout: digits never overlap each other or the date, in every digital configuration
+  // 2. layout: digits never overlap each other, the colon, the seconds or the date, in every digital configuration
   { bool ok = true;
     for (int h12 = 0; h12 < 2; h12++) for (int secs = 0; secs < 2; secs++) for (int df = 0; df < CLK_NDATE; df++) {
       gClk.style = 0; gClk.h12 = h12; gClk.secs = secs; gClk.dateFmt = df;
       ClkLayout L = clkLayout();
-      int right = secs ? L.sx + 26 + CLK_SW : (h12 ? L.apx + 36 : L.x0 + 228);
-      if (L.x0 < 0 || right > SCR_W) ok = false;
-      if (L.y0 + CLK_BH > SCR_H) ok = false;
-      if (df && L.dateY - 16 < L.y0 + CLK_BH) ok = false;
-      if (df && L.dateY + 16 > SCR_H) ok = false;
+      int right = L.xs[3] + L.bw;
+      if (secs) right = L.sx + L.sw + 6 + L.sw; else if (h12) right = L.apx + 36;
+      if (L.xs[0] < 0 || right > SCR_W) { ok = false; printf("      right edge %d (h12 %d secs %d)\n", right, h12, secs); }
+      for (int i = 0; i < 3; i++) if (L.xs[i] + L.bw > L.xs[i + 1]) ok = false;                // digits do not overlap
+      if (L.xs[1] + L.bw > L.colonX || L.colonX + L.colonW > L.xs[2]) ok = false;               // colon sits between the pairs
+      if (secs && L.xs[3] + L.bw > L.sx) ok = false;                                           // seconds clear of minutes
+      if (L.y0 < PF_Y - 20 || L.y0 + L.bh > SCR_H) ok = false;
+      if (df && (L.dateY - 16 < L.y0 + L.bh || L.dateY + 16 > SCR_H)) ok = false;
     }
-    CHECK(ok, "clock: digital layouts fit the 320x240 screen with date below the digits");
+    CHECK(ok, "clock: digital layouts fit the 320x240 screen, nothing overlaps, date sits below the digits");
   }
   // 3. date strings
   { struct tm t; memset(&t, 0, sizeof t); t.tm_year = 126; t.tm_mon = 9; t.tm_mday = 14; t.tm_wday = 3; char b[64];
@@ -185,6 +191,8 @@ int main() {
     CHECK(qi == 1 && gScreen == 1, "settings: Clock tile runs the screensaver, tap returns to Settings");
     bool snd = gSound; tapTile(S_SOUND); CHECK(gSound != snd, "settings: Sound tile toggles"); gSound = snd;
     int diff0 = gDiff; tapTile(S_DIFF); CHECK(gDiff != diff0, "settings: Difficulty tile cycles"); gDiff = (uint8_t)diff0;
+    bool lt = gLight; tapTile(S_THEME); CHECK(gLight != lt && gScreen == 1, "settings: Theme tile switches light/dark");
+    settingsSave(); gLight = !gLight; settingsLoad(); CHECK(gLight != lt, "settings: theme is saved"); gLight = false; settingsSave();
     int br = gBright; tapTile(S_BRIGHT); CHECK(gBright != br, "settings: Brightness tile cycles"); gBright = (uint8_t)br;
     bool inv = gInvert; tapTile(S_INVERT); CHECK(gInvert != inv, "settings: Invert tile toggles"); gInvert = inv;
     // Scores: CANCEL keeps them, DELETE clears them

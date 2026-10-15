@@ -56,7 +56,7 @@ static void drawDiffTag() {
 static void drawMenu() {
   gScreen = 0;
   gCur = -1;
-  tft.fillScreen(C_BLACK);
+  tft.fillScreen(thBg());
   tft.fillRect(0, 0, SCR_W, HUD_H, HUD_BG);
   tft.drawFastHLine(0, HUD_H - 1, SCR_W, RGB565(70, 80, 100));
   text("CYD HUB", 8, 3, 2, C_YELLOW);
@@ -89,8 +89,8 @@ static void launch(int idx) {
 }
 
 // ------------------------------------------------------------------ settings (a grid of tiles, like the game menu)
-static const int SET_ITEMS = 11, SET_COLS = 4, SET_TW = 73, SET_TH = 66, SET_GAP = 5, SET_X0 = 6, SET_Y0 = 28;
-enum { S_SOUND = 0, S_BRIGHT, S_DIFF, S_FLIP, S_INVERT, S_CALIB, S_SCORES, S_WIFI, S_CLOCK, S_CLOCKSET, S_ORDER };
+static const int SET_ITEMS = 12, SET_COLS = 4, SET_TW = 73, SET_TH = 66, SET_GAP = 5, SET_X0 = 6, SET_Y0 = 28;
+enum { S_SOUND = 0, S_BRIGHT, S_DIFF, S_FLIP, S_INVERT, S_CALIB, S_SCORES, S_WIFI, S_CLOCK, S_CLOCKSET, S_ORDER, S_THEME };
 
 static bool isSt7789() { return strcmp(HUB_VARIANT, "st7789") == 0; }
 
@@ -110,13 +110,14 @@ static void settingLabel(int i, char* out, size_t n) {
     case S_WIFI:     snprintf(out, n, "OPEN"); break;
     case S_CLOCK:    snprintf(out, n, "START"); break;
     case S_CLOCKSET: snprintf(out, n, "SET UP"); break;
-    default:         snprintf(out, n, "%s", isSt7789() ? (gBgr ? "BGR" : "RGB") : "-"); break;
+    case S_ORDER:    snprintf(out, n, "%s", isSt7789() ? (gBgr ? "BGR" : "RGB") : "-"); break;
+    default:         snprintf(out, n, "%s", gLight ? "LIGHT" : "DARK"); break;
   }
 }
 static void drawSettingTile(int i) {
   static const char* const names[SET_ITEMS] = {"Sound", "Brightness", "Difficulty", "Rotation", "Invert", "Calibrate",
-                                               "Scores", "Wi-Fi", "Clock", "Clock style", "Red/Blue"};
-  static const uint16_t accent[SET_ITEMS] = {C_GREEN, C_YELLOW, C_YELLOW, C_CYAN, C_MAGENTA, C_ORANGE, C_RED, C_BLUE, C_GOLD, C_PINK, C_TEAL};
+                                               "Scores", "Wi-Fi", "Clock", "Clock style", "Red/Blue", "Theme"};
+  static const uint16_t accent[SET_ITEMS] = {C_GREEN, C_YELLOW, C_YELLOW, C_CYAN, C_MAGENTA, C_ORANGE, C_RED, C_BLUE, C_GOLD, C_PINK, C_TEAL, C_LGREY};
   int x, y;
   settingTileRect(i, &x, &y);
   uint16_t col = (i == S_DIFF) ? diffColor() : accent[i];
@@ -203,12 +204,18 @@ static void settingsTap(int i) {
       clockCustomise();
       drawSettings();
       return;
-    default:   // S_ORDER: red/blue order, ST7789 build only
+    case S_ORDER:   // red/blue order, ST7789 build only
       if (!isSt7789()) { beep(300, 60); return; }
       gBgr = !gBgr;
       applyDisplaySettings();
       drawSettings();     // the whole screen is repainted so the new colours are visible straight away
       break;
+    default:        // S_THEME
+      gLight = !gLight;
+      settingsSave();
+      beep(1000, 25);
+      drawSettings();
+      return;
   }
   settingsSave();
   drawSettingTile(i);
@@ -255,6 +262,10 @@ void setup() {
   randomSeed(esp_random());
   prefs.begin("cydhub", false);
   settingsLoad();
+  if (isSt7789()) {   // the 2-USB panel needs inverted colours and BGR order unless the user chose otherwise
+    if (!prefs.isKey("inv")) gInvert = true;
+    if (!prefs.isKey("bgr")) gBgr = true;
+  }
   clockCfgLoad();
   clockApplyTz();
   soundBegin();

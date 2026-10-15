@@ -55,6 +55,12 @@ keeps time by itself afterwards; it needs Wi-Fi once after each power-up (done a
 re-syncs every few days. There is no battery-backed clock, so an unplugged board forgets the time. Auto-start only runs
 once the time is known.
 
+## Light / dark theme
+
+**Settings -> Theme** switches the menu, settings, Wi-Fi screens and the clock between dark and light. The games always
+keep their dark background, and tiles/buttons stay dark so the game icons stay readable. On the 2-USB (ST7789) build,
+colours start inverted with BGR order, which is what that panel needs; **Invert** and **Red/Blue** can still change it.
+
 ## Which board variant?
 
 | Variant | Boards | Display driver |

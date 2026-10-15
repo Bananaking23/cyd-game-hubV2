@@ -25,7 +25,7 @@ jobs:
           python-version: "3.12"
       - run: pip install esptool
       - name: Build both display variants
-        run: python tools/build.py --version "1.0.${{ github.run_number }}" --build ${{ github.run_number }}
+        run: python tools/build.py --version "2.0.${{ github.run_number }}" --build ${{ github.run_number }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: web

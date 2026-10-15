@@ -1,7 +1,7 @@
 #pragma once
 // Rewritten by tools/build.py for every build (the #ifndef guards only let the host test harness override values).
 #ifndef HUB_VERSION
-#define HUB_VERSION "1.0"
+#define HUB_VERSION "2.0"
 #endif
 #ifndef HUB_BUILD
 #define HUB_BUILD 0

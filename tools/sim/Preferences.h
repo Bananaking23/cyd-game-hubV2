@@ -7,6 +7,7 @@ class Preferences {
   std::map<std::string, std::vector<uint8_t> > m;
  public:
   bool begin(const char*, bool = false) { return true; }
+  bool isKey(const char* k) { return m.count(k) > 0; }
   size_t putBytes(const char* k, const void* v, size_t n) { m[k] = std::vector<uint8_t>((const uint8_t*)v, (const uint8_t*)v + n); return n; }
   size_t getBytes(const char* k, void* b, size_t n) { auto it = m.find(k); if (it == m.end()) return 0; size_t c = std::min(n, it->second.size()); memcpy(b, it->second.data(), c); return c; }
   size_t putInt(const char* k, int32_t v) { return putBytes(k, &v, 4); }

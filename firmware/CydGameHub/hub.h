@@ -72,10 +72,8 @@
 #undef CELL
 #undef CELL_PX
 #undef CH
-#undef CLK_BH
-#undef CLK_BT
-#undef CLK_BW
 #undef CLK_COLS
+#undef CLK_COLS_LIGHT
 #undef CLK_COL_NAMES
 #undef CLK_DATE_NAMES
 #undef CLK_HAND_W
@@ -90,10 +88,7 @@
 #undef CLK_ROWS
 #undef CLK_ROW_NAMES
 #undef CLK_SEG7
-#undef CLK_SH
-#undef CLK_ST
 #undef CLK_STYLE_NAMES
-#undef CLK_SW
 #undef CLK_TZ_NAMES
 #undef CLK_TZ_RULES
 #undef COL
@@ -366,6 +361,7 @@
 #undef S_ORDER
 #undef S_SCORES
 #undef S_SOUND
+#undef S_THEME
 #undef S_WIFI
 #undef TAN
 #undef TAU_F
@@ -442,6 +438,7 @@ static Preferences prefs;
 static bool    gSound  = true;
 static bool    gFlip   = false;   // rotate display 180 degrees
 static bool    gInvert = false;   // invertDisplay
+static bool    gLight  = false;   // light theme for the menu, settings, Wi-Fi screens and clock (games stay dark)
 static bool    gBgr    = false;   // swap red/blue (display colour order); only used by the ST7789 build
 static uint8_t gBright = 3;       // 1..4
 static uint8_t gDiff   = 1;       // difficulty: 0 easy, 1 normal, 2 hard (games read it in init())
@@ -451,6 +448,15 @@ static inline int byDiff(int easy, int normal, int hard) { return gDiff == 0 ? e
 
 static int  gCur = -1;            // index of the running game (-1 = none)
 static bool gLowerBetter = false; // set by the menu from GameDef::lowerBetter
+
+// ------------------------------------------------------------------ theme (light / dark)
+// Only screens outside the games follow the theme (gCur < 0 there). Cards, tiles and buttons stay dark in both themes,
+// so the game icons keep working; the page background, loose text and the clock change.
+static bool uiLight() { return gLight && gCur < 0; }
+static uint16_t thBg()     { return uiLight() ? RGB565(238, 241, 247) : (uint16_t)0x0000; }
+static uint16_t thText()   { return uiLight() ? RGB565(20, 24, 36) : (uint16_t)0xFFFF; }
+static uint16_t thMute()   { return uiLight() ? RGB565(85, 94, 112) : (uint16_t)0xC618; }
+static uint16_t thAccent() { return uiLight() ? RGB565(0, 100, 170) : (uint16_t)0x07FF; }
 
 // ------------------------------------------------------------------ game registry entry
 struct GameDef {
@@ -571,6 +577,7 @@ static void settingsLoad() {
   gFlip   = prefs.getBool("flip", false);
   gInvert = prefs.getBool("inv", false);
   gBgr    = prefs.getBool("bgr", false);
+  gLight  = prefs.getBool("light", false);
   gBright = (uint8_t)clampi(prefs.getUChar("bri", 3), 1, 4);
   gDiff   = (uint8_t)clampi(prefs.getUChar("diff", 1), 0, 2);
 }
@@ -579,6 +586,7 @@ static void settingsSave() {
   prefs.putBool("flip", gFlip);
   prefs.putBool("inv", gInvert);
   prefs.putBool("bgr", gBgr);
+  prefs.putBool("light", gLight);
   prefs.putUChar("bri", gBright);
   prefs.putUChar("diff", gDiff);
 }
@@ -752,6 +760,7 @@ static const uint16_t HUD_BG = RGB565(24, 28, 40);
 
 // Clear the screen, draw the HUD bar with title and the MENU button (top-right).
 static void hudBegin(const char* title, uint16_t bg = C_BLACK) {
+  if (bg == C_BLACK) bg = thBg();     // dark in games, themed elsewhere
   tft.fillScreen(bg);
   tft.fillRect(0, 0, SCR_W, HUD_H, HUD_BG);
   tft.drawFastHLine(0, HUD_H - 1, SCR_W, RGB565(70, 80, 100));

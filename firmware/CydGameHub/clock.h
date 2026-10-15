@@ -17,7 +17,7 @@ static ClockCfg gClk = {0, 0, 1, 1, 0, 2, 1, 0};   // digital, 24 h, seconds on,
 static const int CLK_NSTYLE = 2, CLK_NDATE = 6, CLK_NCOL = 8, CLK_NTZ = 17, CLK_NIDLE = 5;
 static const char* const CLK_STYLE_NAMES[CLK_NSTYLE] = {"DIGITAL", "ANALOG"};
 static const char* const CLK_DATE_NAMES[CLK_NDATE] = {"OFF", "Wed 14 Oct", "14/10/2026", "10/14/2026", "2026-10-14", "Full date"};
-static const char* const CLK_COL_NAMES[CLK_NCOL] = {"CYAN", "GREEN", "GOLD", "ORANGE", "PINK", "MAGENTA", "RED", "WHITE"};
+static const char* const CLK_COL_NAMES[CLK_NCOL] = {"CYAN", "GREEN", "GOLD", "ORANGE", "PINK", "MAGENTA", "RED", "WHITE"};   // WHITE is dark ink in the light theme
 static const uint16_t CLK_COLS[CLK_NCOL] = {C_CYAN, C_GREEN, C_GOLD, C_ORANGE, C_PINK, C_MAGENTA, C_RED, C_WHITE};
 static const char* const CLK_IDLE_NAMES[CLK_NIDLE] = {"OFF", "1 MIN", "5 MIN", "10 MIN", "30 MIN"};
 static const uint8_t CLK_IDLE_MIN[CLK_NIDLE] = {0, 1, 5, 10, 30};
@@ -79,6 +79,14 @@ static bool clockEnsureTime(bool interactive) {
   return valid;
 }
 
+// ------------------------------------------------------------------ colours (themed)
+static const uint16_t CLK_COLS_LIGHT[CLK_NCOL] = {RGB565(0, 120, 175), RGB565(0, 140, 50), RGB565(185, 125, 0), RGB565(215, 85, 0),
+                                                  RGB565(205, 45, 115), RGB565(165, 0, 165), RGB565(200, 20, 30), RGB565(20, 24, 36)};
+static uint16_t clkCol() {
+  int i = clampi(gClk.color, 0, CLK_NCOL - 1);
+  return uiLight() ? CLK_COLS_LIGHT[i] : CLK_COLS[i];
+}
+
 // ------------------------------------------------------------------ date text
 static void clkDateStr(const struct tm& t, int fmt, char* out, size_t n) {
   static const char* const WD[7] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
@@ -100,48 +108,70 @@ static void clkDrawDate(const struct tm& t, int cy) {
   char b[64];
   clkDateStr(t, gClk.dateFmt, b, sizeof b);
   uint8_t font = (tft.textWidth(b, 4) <= 300) ? 4 : 2;
-  tft.fillRect(0, cy - 16, SCR_W, 32, C_BLACK);
-  text(b, SCR_W / 2, cy, font, C_LGREY, MC_DATUM);
+  tft.fillRect(0, cy - 16, SCR_W, 32, thBg());
+  text(b, SCR_W / 2, cy, font, thText(), MC_DATUM);
 }
 
-// ------------------------------------------------------------------ digital face (seven-segment digits)
+// ------------------------------------------------------------------ digital face (big, solid seven-segment digits)
 static const uint8_t CLK_SEG7[10] = {0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F};   // bits 0..6 = segments a..g
 
-// One digit cell; d < 0 leaves the cell blank. Unlit segments are drawn very dark so the digit looks like an LCD.
+// One digit cell; d < 0 leaves the cell blank. Only lit segments are drawn (no ghost segments: they made it hard to read).
 static void clkSeg7(int x, int y, int w, int h, int t, int d, uint16_t col) {
-  tft.fillRect(x, y, w, h, C_BLACK);
+  tft.fillRect(x, y, w, h, thBg());
   if (d < 0) return;
   uint8_t m = CLK_SEG7[d % 10];
-  uint16_t dim = RGB565(14, 17, 26);
   int mid = y + (h - t) / 2;
   int uy = y + t + 1, uh = mid - (y + t) - 2;                 // upper vertical segments
   int ly = mid + t + 1, lh = (y + h - t) - (mid + t) - 2;     // lower vertical segments
   int bx = x + t + 1, bw = w - 2 * t - 2;                     // horizontal segments
-  tft.fillRect(bx, y, bw, t, (m & 0x01) ? col : dim);               // a
-  tft.fillRect(x + w - t, uy, t, uh, (m & 0x02) ? col : dim);       // b
-  tft.fillRect(x + w - t, ly, t, lh, (m & 0x04) ? col : dim);       // c
-  tft.fillRect(bx, y + h - t, bw, t, (m & 0x08) ? col : dim);       // d
-  tft.fillRect(x, ly, t, lh, (m & 0x10) ? col : dim);               // e
-  tft.fillRect(x, uy, t, uh, (m & 0x20) ? col : dim);               // f
-  tft.fillRect(bx, mid, bw, t, (m & 0x40) ? col : dim);             // g
+  if (m & 0x01) tft.fillRect(bx, y, bw, t, col);               // a
+  if (m & 0x02) tft.fillRect(x + w - t, uy, t, uh, col);       // b
+  if (m & 0x04) tft.fillRect(x + w - t, ly, t, lh, col);       // c
+  if (m & 0x08) tft.fillRect(bx, y + h - t, bw, t, col);       // d
+  if (m & 0x10) tft.fillRect(x, ly, t, lh, col);               // e
+  if (m & 0x20) tft.fillRect(x, uy, t, uh, col);               // f
+  if (m & 0x40) tft.fillRect(bx, mid, bw, t, col);             // g
 }
 
-struct ClkLayout { int x0, y0, sx, sy, apx, apy, dateY; };
-static const int CLK_BW = 46, CLK_BH = 84, CLK_BT = 10, CLK_SW = 22, CLK_SH = 40, CLK_ST = 5;
+// Digit geometry depends on what is shown: without seconds the digits are as large as the screen allows.
+struct ClkLayout {
+  int bw, bh, bt;         // big digit cell + stroke
+  int sw, sh, st;         // small (seconds) digit cell + stroke
+  int xs[4];              // x of H1 H2 M1 M2
+  int colonX, colonW;
+  int x0, y0, sx, sy, apx, apy, dateY;
+};
 
 static ClkLayout clkLayout() {
   ClkLayout L;
-  int total = 228;                                   // HH:MM
-  if (gClk.secs) total += 12 + 2 * CLK_SW + 4;       // + :SS in small digits
-  else if (gClk.h12) total += 8 + 36;                // + AM/PM
-  L.x0 = (SCR_W - total) / 2;
   bool date = gClk.dateFmt != 0;
-  L.y0 = date ? 42 : (SCR_H - CLK_BH) / 2;
-  L.sx = L.x0 + 240;
-  L.sy = L.y0 + CLK_BH - CLK_SH;
-  if (gClk.secs) { L.apx = L.x0 + 240; L.apy = L.y0; }
-  else           { L.apx = L.x0 + 236; L.apy = L.y0 + CLK_BH - 16; }
-  L.dateY = L.y0 + CLK_BH + 44;
+  if (gClk.secs) {
+    L.bw = 44; L.bh = 100; L.bt = 11; L.sw = 26; L.sh = 52; L.st = 7;
+    int pitch = 52, colonW = 18;
+    int total = 4 * pitch - (pitch - L.bw) * 2 + colonW + 10 + (L.sw + 6) + L.sw;   // digits, colon, :SS
+    total = 222 + 10 + 32 + L.sw;                                                    // = 290
+    L.x0 = (SCR_W - total) / 2;
+    L.xs[0] = L.x0; L.xs[1] = L.x0 + 52; L.xs[2] = L.x0 + 126; L.xs[3] = L.x0 + 178;
+    L.colonX = L.x0 + 104; L.colonW = colonW;
+    L.sx = L.x0 + 232;
+    L.apx = L.sx;
+  } else if (gClk.h12) {
+    L.bw = 52; L.bh = 108; L.bt = 12; L.sw = L.sh = L.st = 0;
+    L.x0 = (SCR_W - 296) / 2;
+    L.xs[0] = L.x0; L.xs[1] = L.x0 + 60; L.xs[2] = L.x0 + 144; L.xs[3] = L.x0 + 204;
+    L.colonX = L.x0 + 116; L.colonW = 24;
+    L.apx = L.x0 + 268; L.sx = 0;
+  } else {
+    L.bw = 60; L.bh = 112; L.bt = 13; L.sw = L.sh = L.st = 0;
+    L.x0 = (SCR_W - 292) / 2;
+    L.xs[0] = L.x0; L.xs[1] = L.x0 + 68; L.xs[2] = L.x0 + 164; L.xs[3] = L.x0 + 232;
+    L.colonX = L.x0 + 136; L.colonW = 28;
+    L.apx = 0; L.sx = 0;
+  }
+  L.y0 = date ? 30 : (SCR_H - L.bh) / 2;
+  L.sy = L.y0 + L.bh - L.sh;
+  L.apy = gClk.secs ? L.y0 : L.y0 + L.bh - 16;
+  L.dateY = L.y0 + L.bh + 38;
   return L;
 }
 
@@ -163,33 +193,34 @@ static void clkResetCaches() {
 
 static void clkDigital(const struct tm& t) {
   ClkLayout L = clkLayout();
-  uint16_t col = CLK_COLS[clampi(gClk.color, 0, CLK_NCOL - 1)];
+  uint16_t col = clkCol();
   int hour = clampi(t.tm_hour, 0, 23), mi = clampi(t.tm_min, 0, 59), se = clampi(t.tm_sec, 0, 59);
   int hr = hour;
   if (gClk.h12) { hr = hour % 12; if (hr == 0) hr = 12; }
   int v[6] = {hr / 10, hr % 10, mi / 10, mi % 10, se / 10, se % 10};
   if (gClk.h12 && v[0] == 0) v[0] = -1;                         // no leading zero in 12 h mode
-  int xs[6] = {L.x0, L.x0 + 54, L.x0 + 128, L.x0 + 182, L.sx, L.sx + 26};
   int n = gClk.secs ? 6 : 4;
   for (int i = 0; i < n; i++) {
     if (v[i] == clkCell[i]) continue;
     clkCell[i] = (int8_t)v[i];
-    if (i < 4) clkSeg7(xs[i], L.y0, CLK_BW, CLK_BH, CLK_BT, v[i], col);
-    else       clkSeg7(xs[i], L.sy, CLK_SW, CLK_SH, CLK_ST, v[i], col);
+    if (i < 4)       clkSeg7(L.xs[i], L.y0, L.bw, L.bh, L.bt, v[i], col);
+    else if (i == 4) clkSeg7(L.sx, L.sy, L.sw, L.sh, L.st, v[i], col);
+    else             clkSeg7(L.sx + L.sw + 6, L.sy, L.sw, L.sh, L.st, v[i], col);
   }
   int colon = (gClk.secs || (se % 2) == 0) ? 1 : 0;              // without seconds the colon blinks
   if (colon != clkColon) {
     clkColon = (int8_t)colon;
-    int cx = L.x0 + 108 + (16 - CLK_BT) / 2;
-    tft.fillRect(cx, L.y0 + CLK_BH / 3 - CLK_BT / 2, CLK_BT, CLK_BT, colon ? col : C_BLACK);
-    tft.fillRect(cx, L.y0 + 2 * CLK_BH / 3 - CLK_BT / 2, CLK_BT, CLK_BT, colon ? col : C_BLACK);
+    int dot = L.bt + 2;
+    int cx = L.colonX + (L.colonW - dot) / 2;
+    tft.fillRect(cx, L.y0 + L.bh / 3 - dot / 2, dot, dot, colon ? col : thBg());
+    tft.fillRect(cx, L.y0 + 2 * L.bh / 3 - dot / 2, dot, dot, colon ? col : thBg());
   }
   if (gClk.h12) {
     int am = hour < 12 ? 1 : 0;
     if (am != clkAm) {
       clkAm = (int8_t)am;
-      tft.fillRect(L.apx, L.apy, 36, 16, C_BLACK);
-      text(am ? "AM" : "PM", L.apx, L.apy, 2, C_LGREY);
+      tft.fillRect(L.apx, L.apy, 36, 16, thBg());
+      text(am ? "AM" : "PM", L.apx, L.apy, 2, thText());
     }
   }
 }
@@ -205,7 +236,7 @@ static void clkThick(int x0, int y0, int x1, int y1, int w, uint16_t c) {
 }
 static int clkAnaR() { return gClk.dateFmt != 0 ? 84 : 108; }
 static int clkAnaCy() { return gClk.dateFmt != 0 ? 94 : SCR_H / 2; }
-static const int CLK_HAND_W[3] = {5, 3, 1};
+static const int CLK_HAND_W[3] = {7, 5, 2};
 
 static void clkPolar(float deg, int len, int* x, int* y) {
   float a = deg * CLK_PI / 180.0f;
@@ -213,25 +244,27 @@ static void clkPolar(float deg, int len, int* x, int* y) {
   *y = clkAnaCy() - (int)floorf(cosf(a) * (float)len + 0.5f);
 }
 static void clkAnalogFace() {
-  uint16_t col = CLK_COLS[clampi(gClk.color, 0, CLK_NCOL - 1)];
+  uint16_t col = clkCol();
   int R = clkAnaR(), cx = SCR_W / 2, cy = clkAnaCy();
   tft.drawCircle(cx, cy, R, col);
   tft.drawCircle(cx, cy, R - 1, col);
+  tft.drawCircle(cx, cy, R - 2, col);
   for (int i = 0; i < 60; i++) {
     int x0, y0, x1, y1;
     if (i % 5 == 0) {
-      clkPolar((float)i * 6.0f, R - 14, &x0, &y0);
-      clkPolar((float)i * 6.0f, R - 4, &x1, &y1);
-      clkThick(x0, y0, x1, y1, (i % 15 == 0) ? 3 : 1, col);
+      clkPolar((float)i * 6.0f, R - 16, &x0, &y0);
+      clkPolar((float)i * 6.0f, R - 5, &x1, &y1);
+      clkThick(x0, y0, x1, y1, (i % 15 == 0) ? 5 : 3, thText());
     } else {
-      clkPolar((float)i * 6.0f, R - 6, &x0, &y0);
-      tft.fillRect(x0, y0, 2, 2, C_GREY);
+      clkPolar((float)i * 6.0f, R - 8, &x0, &y0);
+      tft.fillRect(x0, y0, 2, 2, thMute());
     }
   }
 }
 static void clkAnalog(const struct tm& t) {
-  uint16_t col = CLK_COLS[clampi(gClk.color, 0, CLK_NCOL - 1)];
-  uint16_t secCol = (gClk.color == CLK_NCOL - 1) ? C_RED : C_WHITE;
+  uint16_t col = clkCol();
+  uint16_t secCol = uiLight() ? C_RED : C_WHITE;
+  if (gClk.color == CLK_NCOL - 2) secCol = uiLight() ? RGB565(20, 24, 36) : C_WHITE;     // red hands: keep the second hand different
   int R = clkAnaR(), cx = SCR_W / 2, cy = clkAnaCy();
   int hour = clampi(t.tm_hour, 0, 23), mi = clampi(t.tm_min, 0, 59), se = clampi(t.tm_sec, 0, 59);
   int32_t key = hour * 3600 + mi * 60 + (gClk.secs ? se : 0);
@@ -239,24 +272,24 @@ static void clkAnalog(const struct tm& t) {
   clkHandKey = key;
   if (clkHandOn) {                                   // erase the old hands (they never reach the tick marks)
     for (int i = 0; i < 3; i++)
-      if (i < 2 || gClk.secs) clkThick(cx, cy, clkHand[i][0], clkHand[i][1], CLK_HAND_W[i], C_BLACK);
+      if (i < 2 || gClk.secs) clkThick(cx, cy, clkHand[i][0], clkHand[i][1], CLK_HAND_W[i], thBg());
   }
   float degH = (float)(hour % 12) * 30.0f + (float)mi * 0.5f;
   float degM = (float)mi * 6.0f + (float)se * 0.1f;
   float degS = (float)se * 6.0f;
   clkPolar(degH, R * 5 / 10, &clkHand[0][0], &clkHand[0][1]);
-  clkPolar(degM, R - 26, &clkHand[1][0], &clkHand[1][1]);
-  clkPolar(degS, R - 18, &clkHand[2][0], &clkHand[2][1]);
+  clkPolar(degM, R - 28, &clkHand[1][0], &clkHand[1][1]);
+  clkPolar(degS, R - 20, &clkHand[2][0], &clkHand[2][1]);
   clkThick(cx, cy, clkHand[0][0], clkHand[0][1], CLK_HAND_W[0], col);
   clkThick(cx, cy, clkHand[1][0], clkHand[1][1], CLK_HAND_W[1], col);
   if (gClk.secs) clkThick(cx, cy, clkHand[2][0], clkHand[2][1], CLK_HAND_W[2], secCol);
-  tft.fillCircle(cx, cy, 5, col);
+  tft.fillCircle(cx, cy, 7, col);
   clkHandOn = true;
 }
 
 // Paint the whole clock for time t (clears the screen first).
 static void clockDrawFull(const struct tm& t) {
-  tft.fillScreen(C_BLACK);
+  tft.fillScreen(thBg());
   clkResetCaches();
   if (gClk.style == 1) clkAnalogFace();
 }
@@ -316,7 +349,7 @@ static void clkRowLabel(int row, char* out, size_t n) {
 }
 static void clkDrawRow(int row) {
   int y = 25 + row * 26;
-  tft.fillRect(0, y, SCR_W, 26, C_BLACK);
+  tft.fillRect(0, y, SCR_W, 26, thBg());
   tft.fillRoundRect(6, y, SCR_W - 12, 23, 6, RGB565(22, 26, 38));
   text(CLK_ROW_NAMES[row], 16, y + 11, 2, C_WHITE, ML_DATUM);
   char b[16];

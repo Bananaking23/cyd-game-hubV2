@@ -58,7 +58,7 @@ static bool netAsk(const char* title, uint16_t col, const char* l1, const char* 
 }
 static void netBusy(const char* title, const char* line) {
   hudBegin(title);
-  text(line, SCR_W / 2, SCR_H / 2, 2, C_WHITE, MC_DATUM);
+  text(line, SCR_W / 2, SCR_H / 2, 2, thText(), MC_DATUM);
 }
 
 // ------------------------------------------------------------------ on-screen keyboard
@@ -114,11 +114,11 @@ static void kbDrawKey(const KbKey& k, bool shift, bool sym, bool hot) {
   text(lab, k.x + k.w / 2, k.y + KB_PITCH / 2 - 1, 2, hot ? C_BLACK : C_WHITE, MC_DATUM);
 }
 static void kbDrawAll(const KbKey* k, int n, bool shift, bool sym) {
-  tft.fillRect(0, KB_Y0, SCR_W, SCR_H - KB_Y0, C_BLACK);
+  tft.fillRect(0, KB_Y0, SCR_W, SCR_H - KB_Y0, thBg());
   for (int i = 0; i < n; i++) kbDrawKey(k[i], shift, sym, false);
 }
 static void kbDrawField(const char* buf, int len, bool show, bool canShow) {
-  tft.fillRect(0, PF_Y + 2, SCR_W, 34, C_BLACK);
+  tft.fillRect(0, PF_Y + 2, SCR_W, 34, thBg());
   int fw = canShow ? 250 : 308;
   tft.fillRect(6, 28, fw, 26, HUD_BG);
   tft.drawRect(6, 28, fw, 26, C_GREY);
@@ -224,7 +224,7 @@ static bool wifiConnect(const char* ssid, const char* pass) {
   netBusy("Wi-Fi", "Connecting...");
   char nm[40];
   snprintf(nm, sizeof nm, "%.30s", ssid);
-  text(nm, SCR_W / 2, SCR_H / 2 + 24, 2, C_CYAN, MC_DATUM);
+  text(nm, SCR_W / 2, SCR_H / 2 + 24, 2, thAccent(), MC_DATUM);
   WiFi.mode(WIFI_STA);
   WiFi.disconnect();
   delay(100);
@@ -238,7 +238,7 @@ static bool wifiConnect(const char* ssid, const char* pass) {
     char d[8];
     dots = (dots + 1) % 4;
     snprintf(d, sizeof d, "%.*s", dots, "...");
-    textBox(d, SCR_W / 2, SCR_H / 2 + 52, 60, 20, 2, C_GREY, C_BLACK);
+    textBox(d, SCR_W / 2, SCR_H / 2 + 52, 60, 20, 2, C_GREY, thBg());
   }
   return true;
 }
@@ -437,10 +437,10 @@ static void otaProgress(int pct) {
   lastPct = pct;
   tft.fillRect(20, 120, 280, 20, C_DGREY);
   tft.fillRect(20, 120, 280 * pct / 100, 20, C_GREEN);
-  tft.drawRect(20, 120, 280, 20, C_WHITE);
+  tft.drawRect(20, 120, 280, 20, thText());
   char b[12];
   snprintf(b, sizeof b, "%d%%", pct);
-  textBox(b, SCR_W / 2, 160, 80, 24, 4, C_WHITE, C_BLACK);
+  textBox(b, SCR_W / 2, 160, 80, 24, 4, thText(), thBg());
   if (pct >= 100) lastPct = -1;
 }
 
@@ -565,11 +565,11 @@ static void netDrawScreen() {
   hudBegin("Wi-Fi & updates");
   char b[48];
   snprintf(b, sizeof b, "Installed: v%s (%s)", HUB_VERSION, HUB_VARIANT);
-  text(b, 10, PF_Y + 8, 2, C_WHITE);
+  text(b, 10, PF_Y + 8, 2, thText());
   WifiCreds c;
   if (wifiLoadCreds(c)) {
     snprintf(b, sizeof b, "Wi-Fi: %.24s", c.ssid);
-    text(b, 10, PF_Y + 30, 2, C_CYAN);
+    text(b, 10, PF_Y + 30, 2, thAccent());
   } else {
     text("Wi-Fi: not set up", 10, PF_Y + 30, 2, C_GREY);
   }

@@ -109,7 +109,7 @@ def merge_fallback(build_dir, out_bin):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--version", default="1.0")
+    ap.add_argument("--version", default="2.0")
     ap.add_argument("--build", type=int, default=0, help="build number; an update is offered when the published one is higher")
     ap.add_argument("--base-url", default=None, help="where the web/ folder is published, e.g. https://you.github.io/cyd-game-hub/")
     ap.add_argument("--only", choices=list(VARIANTS), help="build just one variant")
@@ -135,7 +135,7 @@ def main():
     try:
         build_all(a, cli, base_url)
     finally:
-        write_version_h("1.0", 0, "ili9341", "")      # leave the working tree with neutral defaults
+        write_version_h("2.0", 0, "ili9341", "")      # leave the working tree with neutral defaults
 
 
 def build_all(a, cli, base_url):
