@@ -82,9 +82,11 @@
 #undef CLK_NCOL
 #undef CLK_NDATE
 #undef CLK_NIDLE
+#undef CLK_NPLACE
 #undef CLK_NSTYLE
 #undef CLK_NTZ
 #undef CLK_PI
+#undef CLK_PLACES
 #undef CLK_ROWS
 #undef CLK_ROW_H
 #undef CLK_ROW_NAMES

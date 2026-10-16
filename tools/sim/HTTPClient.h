@@ -5,12 +5,13 @@ enum { HTTP_CODE_OK = 200, HTTP_CODE_NOT_FOUND = 404 };
 enum { HTTPC_DISABLE_FOLLOW_REDIRECTS = 0, HTTPC_STRICT_FOLLOW_REDIRECTS = 1, HTTPC_FORCE_FOLLOW_REDIRECTS = 2 };
 extern int g_httpMode;     // 0 normal, 1 json garbage, 2 size mismatch, 3 server error, 4 stream stalls
 extern long g_binSize;
+extern char g_lastUrl[256];   // last URL passed to HTTPClient::begin
 extern const char* g_wxBody;   // body served for api.open-meteo.com (null = a realistic default)
 class HTTPClient {
   std::string url_;
   WiFiClient c_;
  public:
-  bool begin(WiFiClient&, const String& u) { url_ = u.c_str(); return url_.rfind("https://", 0) == 0; }
+  bool begin(WiFiClient&, const String& u) { url_ = u.c_str(); snprintf(g_lastUrl, sizeof g_lastUrl, "%s", u.c_str()); return url_.rfind("https://", 0) == 0; }
   void setTimeout(uint16_t) {}
   void setFollowRedirects(int) {}
   int GET() {

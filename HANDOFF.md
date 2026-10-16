@@ -1,6 +1,6 @@
 # CYD Game Hub - handoff note
 
-Paste this into a new chat together with the latest project zip (`cyd-game-hub-v10.zip` or newer).
+Paste this into a new chat together with the latest project zip (`cyd-game-hub-v11.zip` or newer).
 
 ## What it is
 Firmware + browser web flasher for an ESP32-2432S028R "Cheap Yellow Display" (2.8", 320x240, resistive touch).
@@ -8,7 +8,7 @@ Built with arduino-cli (esp32 core 2.0.17, TFT_eSPI 2.5.43, XPT2046_Touchscreen 
 GitHub Desktop -> GitHub Pages via the Actions workflow in `.github/workflows/build.yml`. The user has the
 **2-USB board (USB-C + micro-USB, ST7789)** and flashes the `st7789` variant.
 
-## Current features (v10, version 2.0.x)
+## Current features (v11, version 2.0.x)
 - 19 games (Snake, Flap, Breakout, Pong, Invaders, Asteroids, Tetris, 2048, Simon, Whack, Runner, Tic-Tac-Toe, Connect 4,
   Reversi, Memory, Minesweeper, Lights Out, Sudoku, Slide). Easy/Normal/Hard with separate high scores per difficulty.
 - Settings is a 4x3 tile grid: Sound, Brightness, Difficulty, Rotation, Invert, Calibrate, Scores (asks first),
@@ -18,11 +18,12 @@ GitHub Desktop -> GitHub Pages via the Actions workflow in `.github/workflows/bu
   Needs the `min_spiffs` partition scheme, so older boards needed one USB reflash.
 - Clock screensaver: digital (seven-segment) or analog, 12/24 h, seconds, date formats, colour, own brightness,
   17 time zones with DST, auto-start after idle on the menu. Time via NTP over the saved Wi-Fi (no battery-backed RTC).
-- Clock weather (Open-Meteo, no key): icon + temperature + condition + today's high/low, for the city of the selected time
-  zone (lat/lon table `CLK_TZ_LAT/LON` in `clock.h`; UTC = no city). Setting `Weather` = off / Celsius / Fahrenheit in the
-  Clock style screen (9 rows now, row pitch 23 px). Fetched when the clock starts, then every 30 min (retry 10 min), silently
-  over the saved Wi-Fi, also on auto-start; hidden after 3 h without a refresh. `ClockCfg` grew a 9th byte (`wx`); the old
-  8-byte NVS record still loads (weather defaults to Celsius). Digital: one row at y=212; analog: icon/temp left of the dial,
+- Clock weather (Open-Meteo, no key): icon + temperature + condition + today's high/low. Place = `Place` row: ZONE CITY (the
+  selected time zone's city, `CLK_TZ_LAT/LON`) or one of `CLK_PLACES` (UK/Ireland cities incl. Manchester - the user is in
+  Manchester); UTC + ZONE CITY = no weather. `Weather` row = off / Celsius / Fahrenheit. Clock style screen has 10 rows now
+  (row pitch 21 px). Location id (`wxLoc()`): 1..16 zone city, 100+n place; cached data is only shown for its own id. Fetched when the clock starts, then every 30 min (retry 10 min), silently
+  over the saved Wi-Fi, also on auto-start; hidden after 3 h without a refresh. `ClockCfg` grew `wx` (9th byte) and `place` (10th); the old
+  8- and 9-byte NVS records still load (weather defaults to Celsius, place to ZONE CITY). Digital: one row at y=212; analog: icon/temp left of the dial,
   condition + H/L right (the dial shrinks to r=84 whenever weather is active).
 - Light/dark theme applies to menu, settings, Wi-Fi screens and clock only; games and tiles stay dark.
 - ST7789 defaults on a fresh install: Invert on, BGR order (this is what the user's panel needed).

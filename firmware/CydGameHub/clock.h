@@ -13,8 +13,8 @@
 #pragma once
 #include "net.h"
 
-struct ClockCfg { uint8_t style, h12, secs, dateFmt, color, bright, tz, idle, wx; };
-static ClockCfg gClk = {0, 0, 1, 1, 0, 2, 1, 0, 1};   // digital, 24 h, seconds on, short date, cyan, brightness 2, London, auto-start off, weather in Celsius
+struct ClockCfg { uint8_t style, h12, secs, dateFmt, color, bright, tz, idle, wx, place; };
+static ClockCfg gClk = {0, 0, 1, 1, 0, 2, 1, 0, 1, 0};   // digital, 24 h, seconds on, short date, cyan, brightness 2, London, auto-start off, weather in Celsius
 
 static const int CLK_NSTYLE = 2, CLK_NDATE = 6, CLK_NCOL = 8, CLK_NTZ = 17, CLK_NIDLE = 5;
 static const char* const CLK_STYLE_NAMES[CLK_NSTYLE] = {"DIGITAL", "ANALOG"};
@@ -30,6 +30,14 @@ static const char* const CLK_TZ_RULES[CLK_NTZ] = {
   "<+07>-7", "CST-8", "JST-9", "AEST-10AEDT,M10.1.0,M4.1.0/3", "NZST-12NZDT,M9.5.0,M4.1.0/3", "<-03>3",
   "EST5EDT,M3.2.0,M11.1.0", "CST6CDT,M3.2.0,M11.1.0", "MST7MDT,M3.2.0,M11.1.0", "PST8PDT,M3.2.0,M11.1.0"};
 
+// Optional own place for the weather (index 0 = "use the time zone's city"). Add more cities here and bump nothing else.
+struct ClkPlace { const char* name; float lat, lon; };
+static const ClkPlace CLK_PLACES[] = {
+  {"ZONE CITY", 0.f, 0.f}, {"London", 51.51f, -0.13f}, {"Manchester", 53.48f, -2.24f}, {"Birmingham", 52.49f, -1.89f},
+  {"Liverpool", 53.41f, -2.98f}, {"Leeds", 53.80f, -1.55f}, {"Sheffield", 53.38f, -1.47f}, {"Newcastle", 54.98f, -1.62f},
+  {"Nottingham", 52.95f, -1.15f}, {"Bristol", 51.45f, -2.59f}, {"Cardiff", 51.48f, -3.18f}, {"Edinburgh", 55.95f, -3.19f},
+  {"Glasgow", 55.86f, -4.25f}, {"Belfast", 54.60f, -5.93f}, {"Dublin", 53.35f, -6.26f}};
+static const int CLK_NPLACE = (int)(sizeof CLK_PLACES / sizeof CLK_PLACES[0]);
 static const float CLK_PI = 3.14159265f;
 static uint32_t gClkSynced = 0;          // epoch seconds of the last successful NTP sync this session (0 = none yet)
 
@@ -38,7 +46,8 @@ static void clockCfgLoad() {
   memset(&c, 0, sizeof c);
   size_t got = prefs.getBytes("clk", &c, sizeof c);
   if (got < 8) return;                                             // nothing saved: keep the defaults (8 = record from before weather existed)
-  gClk.wx      = got >= sizeof c ? (uint8_t)clampi(c.wx, 0, 2) : (uint8_t)1;
+  gClk.wx      = got >= 9 ? (uint8_t)clampi(c.wx, 0, 2) : (uint8_t)1;           // 9 = record from before the place setting existed
+  gClk.place   = got >= sizeof c ? (uint8_t)clampi(c.place, 0, CLK_NPLACE - 1) : (uint8_t)0;
   gClk.style   = (uint8_t)clampi(c.style, 0, CLK_NSTYLE - 1);
   gClk.h12     = c.h12 ? 1 : 0;
   gClk.secs    = c.secs ? 1 : 0;
@@ -102,13 +111,23 @@ static const uint32_t WX_REFRESH_MS = 30UL * 60UL * 1000UL;   // normal refresh
 static const uint32_t WX_RETRY_MS = 10UL * 60UL * 1000UL;     // after a failure
 static const uint32_t WX_MAX_AGE_S = 3UL * 3600UL;            // older data is hidden rather than shown wrong
 
-struct WxData { bool have, hasHL; uint8_t code, day, tz; int16_t t10, hi10, lo10; uint32_t stamp; };   // temperatures: tenths of a degree C
+struct WxData { bool have, hasHL; uint8_t code, day, tz /* = location id, see wxLoc() */; int16_t t10, hi10, lo10; uint32_t stamp; };   // temperatures: tenths of a degree C
 static WxData gWx = {false, false, 0, 1, 0, 0, 0, 0, 0};
 static uint32_t gWxNextMs = 0;
 
-static bool wxActive() { return gClk.wx != 0 && gClk.tz != 0 && gClk.tz < CLK_NTZ; }
+// Where the weather is for: 1..CLK_NTZ-1 = the time zone's city, 100+n = CLK_PLACES[n], 0 = nowhere (UTC and no place chosen).
+static int wxLoc() {
+  if (gClk.place > 0 && gClk.place < CLK_NPLACE) return 100 + gClk.place;
+  return (gClk.tz > 0 && gClk.tz < CLK_NTZ) ? gClk.tz : 0;
+}
+static bool wxLatLon(int loc, float* lat, float* lon) {
+  if (loc >= 101 && loc < 100 + CLK_NPLACE) { *lat = CLK_PLACES[loc - 100].lat; *lon = CLK_PLACES[loc - 100].lon; return true; }
+  if (loc > 0 && loc < CLK_NTZ) { *lat = CLK_TZ_LAT[loc]; *lon = CLK_TZ_LON[loc]; return true; }
+  return false;
+}
+static bool wxActive() { return gClk.wx != 0 && wxLoc() != 0; }
 static bool wxValid() {
-  if (!wxActive() || !gWx.have || gWx.tz != gClk.tz) return false;
+  if (!wxActive() || !gWx.have || gWx.tz != wxLoc()) return false;
   uint32_t now = (uint32_t)netTimeFn(nullptr);
   return now >= gWx.stamp && now - gWx.stamp < WX_MAX_AGE_S;
 }
@@ -178,13 +197,14 @@ static bool wxParse(const char* body, WxData& d) {
   return true;
 }
 
-static bool wxFetch(int tz, WxData& out) {
-  if (tz <= 0 || tz >= CLK_NTZ) return false;
+static bool wxFetch(int loc, WxData& out) {
+  float lat, lon;
+  if (!wxLatLon(loc, &lat, &lon)) return false;
   char url[200];
   snprintf(url, sizeof url,
            "https://api.open-meteo.com/v1/forecast?latitude=%.2f&longitude=%.2f&current=temperature_2m,weather_code,is_day"
            "&daily=temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=1",
-           (double)CLK_TZ_LAT[tz], (double)CLK_TZ_LON[tz]);
+           (double)lat, (double)lon);
   WiFiClientSecure client;
   client.setCACertBundle(hubRootBundle);
   HTTPClient http;
@@ -197,7 +217,7 @@ static bool wxFetch(int tz, WxData& out) {
   http.end();
   if (body.length() > 4000) return false;
   if (!wxParse(body.c_str(), out)) return false;
-  out.tz = (uint8_t)tz;
+  out.tz = (uint8_t)loc;
   out.stamp = (uint32_t)netTimeFn(nullptr);
   return true;
 }
@@ -223,7 +243,7 @@ static int wxRefresh() {
   int res = up == 2 ? 2 : 0;
   if (up == 1) {
     WxData d;
-    if (wxFetch(gClk.tz, d)) { gWx = d; res = 1; }
+    if (wxFetch(wxLoc(), d)) { gWx = d; res = 1; }
   }
   wifiOff();
   return res;
@@ -232,7 +252,7 @@ static int wxRefresh() {
 static void wxSchedule(bool afterAttempt, bool ok) {
   if (afterAttempt) { gWxNextMs = millis() + (ok ? WX_REFRESH_MS : WX_RETRY_MS); return; }
   uint32_t now = (uint32_t)netTimeFn(nullptr);
-  if (gWx.have && gWx.tz == gClk.tz && now >= gWx.stamp && now - gWx.stamp < WX_REFRESH_MS / 1000UL)
+  if (gWx.have && gWx.tz == wxLoc() && now >= gWx.stamp && now - gWx.stamp < WX_REFRESH_MS / 1000UL)
     gWxNextMs = millis() + WX_REFRESH_MS - (now - gWx.stamp) * 1000UL;
   else
     gWxNextMs = millis();
@@ -636,8 +656,8 @@ static void clockRun(bool autostart) {
 }
 
 // ------------------------------------------------------------------ customisation screen
-static const int CLK_ROWS = 9, CLK_ROW_H = 23;
-static const char* const CLK_ROW_NAMES[CLK_ROWS] = {"Style", "Time format", "Seconds", "Date", "Colour", "Brightness", "Time zone", "Weather", "Auto-start"};
+static const int CLK_ROWS = 10, CLK_ROW_H = 21;
+static const char* const CLK_ROW_NAMES[CLK_ROWS] = {"Style", "Time format", "Seconds", "Date", "Colour", "Brightness", "Time zone", "Weather", "Place", "Auto-start"};
 
 static void clkRowLabel(int row, char* out, size_t n) {
   switch (row) {
@@ -648,7 +668,8 @@ static void clkRowLabel(int row, char* out, size_t n) {
     case 4: snprintf(out, n, "%s", CLK_COL_NAMES[clampi(gClk.color, 0, CLK_NCOL - 1)]); break;
     case 5: snprintf(out, n, "%d / 4", (int)gClk.bright); break;
     case 6: snprintf(out, n, "%s", CLK_TZ_NAMES[clampi(gClk.tz, 0, CLK_NTZ - 1)]); break;
-    case 7: snprintf(out, n, "%s", (gClk.wx && gClk.tz == 0) ? "SET ZONE" : CLK_WX_UNIT_NAMES[clampi(gClk.wx, 0, 2)]); break;
+    case 8: snprintf(out, n, "%s", CLK_PLACES[clampi(gClk.place, 0, CLK_NPLACE - 1)].name); break;
+    case 7: snprintf(out, n, "%s", (gClk.wx && wxLoc() == 0) ? "SET PLACE" : CLK_WX_UNIT_NAMES[clampi(gClk.wx, 0, 2)]); break;
     default: snprintf(out, n, "%s", CLK_IDLE_NAMES[clampi(gClk.idle, 0, CLK_NIDLE - 1)]); break;
   }
 }
@@ -680,6 +701,7 @@ static void clkChange(int row, int dir) {
     case 5: gClk.bright = (uint8_t)((gClk.bright - 1 + 4 + d) % 4 + 1); break;
     case 6: gClk.tz = (uint8_t)((gClk.tz + CLK_NTZ + d) % CLK_NTZ); break;
     case 7: gClk.wx = (uint8_t)((gClk.wx + 3 + d) % 3); break;
+    case 8: gClk.place = (uint8_t)((gClk.place + CLK_NPLACE + d) % CLK_NPLACE); break;
     default: gClk.idle = (uint8_t)((gClk.idle + CLK_NIDLE + d) % CLK_NIDLE); break;
   }
 }

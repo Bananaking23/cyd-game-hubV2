@@ -161,7 +161,7 @@ int main() {
     v.push_back(menu);
     run(v); clockCustomise();
     ClockCfg a = gClk;
-    CHECK(a.style == 1 && a.h12 == 1 && a.secs == 0 && a.dateFmt == 2 && a.color == 1 && a.bright == 3 && a.tz == 2 && a.wx == 1 && a.idle == 1,
+    CHECK(a.style == 1 && a.h12 == 1 && a.secs == 0 && a.dateFmt == 2 && a.color == 1 && a.bright == 3 && a.tz == 2 && a.wx == 1 && a.place == 1 && a.idle == 1,
           "clock set-up: every row changes forward and back; result as expected");
     gClk = ClockCfg{0, 0, 1, 1, 0, 2, 1, 0}; clockCfgLoad();
     CHECK(gClk.style == a.style && gClk.tz == a.tz && gClk.idle == a.idle, "clock set-up: saved on leaving");
@@ -337,11 +337,41 @@ int main() {
       clkChange(7, 1); clkRowLabel(7, b, sizeof b); ok = ok && !strcmp(b, "CELSIUS");
       clkChange(7, 1); clkRowLabel(7, b, sizeof b); ok = ok && !strcmp(b, "FAHRENHEIT");
       clkChange(7, 1); ok = ok && gClk.wx == 0; clkChange(7, -1); ok = ok && gClk.wx == 2;
-      gClk.tz = 0; clkRowLabel(7, b, sizeof b); ok = ok && !strcmp(b, "SET ZONE");
+      gClk.tz = 0; clkRowLabel(7, b, sizeof b); ok = ok && !strcmp(b, "SET PLACE");
       CHECK(ok, "weather setting: row labels and cycling");
+      gClk.place = 0; clkChange(8, 1); clkRowLabel(8, b, sizeof b); bool pl = !strcmp(b, "London") && gClk.place == 1;
+      clkChange(8, -1); clkChange(8, -1); clkRowLabel(8, b, sizeof b); pl = pl && !strcmp(b, CLK_PLACES[CLK_NPLACE - 1].name) && gClk.place == CLK_NPLACE - 1;
+      clkChange(8, 1); pl = pl && gClk.place == 0; clkRowLabel(8, b, sizeof b); pl = pl && !strcmp(b, "ZONE CITY");
+      gClk.place = 2; gClk.tz = 0; clkRowLabel(7, b, sizeof b); pl = pl && !strcmp(b, "FAHRENHEIT");   // a chosen place works without a zone
+      CHECK(pl, "weather setting: Place row cycles (and wraps) through the list, ZONE CITY first");
+      gClk.place = 0;
       CHECK(25 + CLK_ROWS * CLK_ROW_H <= SCR_H, "clock set-up: all rows fit above the bottom edge");
-      long o0 = g_offscreen; gClk.tz = 1; clkDrawScreen(); CHECK(g_offscreen == o0, "clock set-up: screen with nine rows draws inside the screen");
+      long o0 = g_offscreen; gClk.tz = 1; clkDrawScreen(); CHECK(g_offscreen == o0, "clock set-up: screen with ten rows draws inside the screen");
       gClk = ClockCfg{0, 0, 1, 1, 0, 2, 1, 0, 1};
+    }
+
+    // 11k. places: Manchester & co. are fetched from their own coordinates, independent of the time zone
+    { gClk = ClockCfg{0, 0, 1, 1, 0, 2, 1, 0, 1, 0}; gWx = WxData{false, false, 0, 1, 0, 0, 0, 0, 0}; fakeNow = 1760000000L; fakeStep = 0;
+      wifiSaveCreds("HomeNet", "secret123"); g_wifiPassOK = true; g_httpMode = 0; g_wxBody = 0;
+      bool a = wxLoc() == 1 && wxRefresh() == 1 && strstr(g_lastUrl, "latitude=51.51") && gWx.tz == 1;
+      gClk.place = 2;                                                           // Manchester
+      bool b = wxLoc() == 102 && wxActive() && !wxValid();                      // cached London data must not be shown as Manchester
+      b = b && wxRefresh() == 1 && strstr(g_lastUrl, "latitude=53.48") && strstr(g_lastUrl, "longitude=-2.24") && gWx.tz == 102 && wxValid();
+      gClk.tz = 0; bool c = wxActive() && wxValid() && wxLoc() == 102;          // UTC zone but a place is chosen: still works
+      gClk.place = 0; bool d = !wxActive() && !wxValid() && wxLoc() == 0;       // back to ZONE CITY with UTC: nothing
+      gClk.tz = 13; bool e = wxLoc() == 13 && wxActive() && !wxValid();         // New York zone city
+      gClk.place = 200; bool f = wxLoc() == 13;                                 // out-of-range place is ignored
+      gClk.place = 0; gClk.tz = 1;
+      bool g = !wxFetch(100, gWx) && !wxFetch(100 + CLK_NPLACE, gWx) && !wxFetch(255, gWx);
+      CHECK(a && b && c && d && e && f && g, "weather places: Manchester uses its own coordinates, cache is per place, zone city is the fallback");
+      bool all = true; for (int i = 1; i < CLK_NPLACE; i++) all = all && CLK_PLACES[i].lat > -90 && CLK_PLACES[i].lat < 90 && CLK_PLACES[i].lon > -180 && CLK_PLACES[i].lon < 180 && strlen(CLK_PLACES[i].name) <= 11;
+      CHECK(all, "weather places: coordinates valid, names fit the button");
+      // the previous version's 9-byte record keeps its settings and gets place = ZONE CITY
+      uint8_t old9[9] = {1, 1, 0, 4, 5, 3, 9, 2, 2}; prefs.putBytes("clk", old9, 9); gClk = ClockCfg{0, 0, 1, 1, 0, 2, 1, 0, 0, 5}; clockCfgLoad();
+      CHECK(gClk.tz == 9 && gClk.idle == 2 && gClk.wx == 2 && gClk.place == 0, "weather places: settings saved by the previous version still load");
+      gClk.place = 3; clockCfgSave(); gClk.place = 0; clockCfgLoad(); CHECK(gClk.place == 3, "weather places: chosen place survives save / load");
+      uint8_t bad10[10] = {0, 0, 1, 1, 0, 2, 1, 0, 1, 250}; prefs.putBytes("clk", bad10, 10); clockCfgLoad(); CHECK(gClk.place < CLK_NPLACE, "weather places: corrupt place is clamped");
+      gClk = ClockCfg{0, 0, 1, 1, 0, 2, 1, 0, 1, 0};
     }
   }
   printf("\n%s (%d failures)\n", fails ? "CLOCK TEST FAILED" : "clock test passed", fails);

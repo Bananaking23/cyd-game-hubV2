@@ -62,9 +62,11 @@ once the time is known.
 
 With **Weather** on, the clock shows an icon, the temperature, the condition and today's high / low: in one row under the
 digits (digital) or beside the dial (analog; the dial gets slightly smaller). Data comes from [Open-Meteo](https://open-meteo.com)
-(free, no account or key). The place is the **city of the chosen time zone** (London, Paris, Athens, Moscow, Dubai, Delhi,
-Bangkok, Beijing, Tokyo, Sydney, Auckland, Sao Paulo, New York, Chicago, Denver, Los Angeles); UTC has no city, so pick a zone
-to get weather. It is fetched when the clock starts and then every 30 minutes (retry after 10 minutes if it fails) over the
+(free, no account or key). The place is set by the **Place** row: **ZONE CITY** (the default) uses the city of the chosen time zone
+(London, Paris, Athens, Moscow, Dubai, Delhi, Bangkok, Beijing, Tokyo, Sydney, Auckland, Sao Paulo, New York, Chicago, Denver,
+Los Angeles), or pick one of the built-in places directly: London, Manchester, Birmingham, Liverpool, Leeds, Sheffield,
+Newcastle, Nottingham, Bristol, Cardiff, Edinburgh, Glasgow, Belfast, Dublin (more can be added to `CLK_PLACES` in `clock.h`).
+UTC with ZONE CITY has no city, so pick a place or a zone to get weather. It is fetched when the clock starts and then every 30 minutes (retry after 10 minutes if it fails) over the
 saved Wi-Fi, which is switched on only for those few seconds, also when the clock auto-starts. The clock pauses for that moment;
 a touch while it connects ends the clock as usual. Weather older than 3 hours is hidden rather than shown wrong.
 
