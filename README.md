@@ -20,7 +20,7 @@ The firmware has to be compiled once; this repo does that for you two ways.
 ### A. Locally (Windows / macOS / Linux)
 
 1. Install [arduino-cli](https://arduino.github.io/arduino-cli/) (Windows: `winget install ArduinoSA.CLI`) and Python 3.
-2. `pip install esptool` (only used as a fallback when arduino-cli doesn't emit a merged image)
+2. `pip install esptool` (only used by `--flash`)
 3. `python tools/build.py`  - installs the ESP32 core 2.0.17 + libraries, builds both display variants,
    writes `web/firmware/*.bin` and `web/manifest-*.json`.
 4. `python tools/serve.py`  - opens http://localhost:8000. Pick your board, click flash.
@@ -39,7 +39,9 @@ publishes a new build number, so every push becomes an available update. A local
 address unless you pass `--base-url`.
 
 * Updates need the two-slot partition layout (`min_spiffs`). A board flashed with an older version of this project must be
-  flashed **once more over USB / the web flasher**; settings survive, high scores are reset once (scores are now per difficulty).
+  flashed **once more over USB / the web flasher**. Wireless updates never touch saved scores or settings. The web flasher and
+  `Build-and-Flash.bat` write the bootloader, partition table and app at their own addresses and skip the storage area, so
+  scores, settings and touch calibration also survive re-flashing (only the older single-image flasher wiped them).
 * The Wi-Fi password is stored unencrypted in the board's NVS flash. Don't reuse an important password.
 
 ## Clock screensaver
@@ -47,13 +49,24 @@ address unless you pass `--base-url`.
 **Settings -> Clock** shows a full-screen clock; touch anywhere to leave. **Settings -> Clock style** customises it:
 digital (seven-segment) or analog face, 12/24 hour, seconds on/off, date (off, `Wed 14 Oct`, `14/10/2026`, `10/14/2026`,
 `2026-10-14`, or the full `Wednesday 14 October`), colour, its own brightness, time zone (daylight saving is automatic) and
-**Auto-start** (starts by itself after 1 / 5 / 10 / 30 minutes without touching the menu). PREVIEW in the set-up screen
+**Weather** (off / Celsius / Fahrenheit) and **Auto-start** (starts by itself after 1 / 5 / 10 / 30 minutes without
+touching the menu). PREVIEW in the set-up screen
 shows the result. In the set-up list, tapping a row's name steps backwards, tapping its button steps forwards.
 
 The time comes from the internet (NTP) over the saved Wi-Fi, so set up Wi-Fi first (Settings -> Wi-Fi & updates). The board
 keeps time by itself afterwards; it needs Wi-Fi once after each power-up (done automatically when you press START) and
 re-syncs every few days. There is no battery-backed clock, so an unplugged board forgets the time. Auto-start only runs
 once the time is known.
+
+### Weather on the clock
+
+With **Weather** on, the clock shows an icon, the temperature, the condition and today's high / low: in one row under the
+digits (digital) or beside the dial (analog; the dial gets slightly smaller). Data comes from [Open-Meteo](https://open-meteo.com)
+(free, no account or key). The place is the **city of the chosen time zone** (London, Paris, Athens, Moscow, Dubai, Delhi,
+Bangkok, Beijing, Tokyo, Sydney, Auckland, Sao Paulo, New York, Chicago, Denver, Los Angeles); UTC has no city, so pick a zone
+to get weather. It is fetched when the clock starts and then every 30 minutes (retry after 10 minutes if it fails) over the
+saved Wi-Fi, which is switched on only for those few seconds, also when the clock auto-starts. The clock pauses for that moment;
+a touch while it connects ends the clock as usual. Weather older than 3 hours is hidden rather than shown wrong.
 
 ## Light / dark theme
 

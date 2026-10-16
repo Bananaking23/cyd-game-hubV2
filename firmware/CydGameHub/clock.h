@@ -5,14 +5,16 @@
 //    colour, brightness, time zone, automatic start after a period of no touching on the menu).
 //  * The time comes from NTP over the saved Wi-Fi (see net.h). The ESP32 keeps counting after that, so Wi-Fi is only
 //    needed once after power-up (and again every few days, to correct drift). Wi-Fi is switched off again right away.
+//  * Optional weather (Open-Meteo, no account or key): temperature, condition and today's high/low for the city of the
+//    selected time zone, refreshed every 30 minutes over the saved Wi-Fi (switched on briefly, then off again).
 //  * A touch anywhere ends the screensaver. Like net.h, it is a blocking sub-screen with its own small loop.
 //  * Time zones are POSIX rules, so daylight-saving changes happen by themselves.
 // =============================================================================
 #pragma once
 #include "net.h"
 
-struct ClockCfg { uint8_t style, h12, secs, dateFmt, color, bright, tz, idle; };
-static ClockCfg gClk = {0, 0, 1, 1, 0, 2, 1, 0};   // digital, 24 h, seconds on, short date, cyan, brightness 2, London, auto-start off
+struct ClockCfg { uint8_t style, h12, secs, dateFmt, color, bright, tz, idle, wx; };
+static ClockCfg gClk = {0, 0, 1, 1, 0, 2, 1, 0, 1};   // digital, 24 h, seconds on, short date, cyan, brightness 2, London, auto-start off, weather in Celsius
 
 static const int CLK_NSTYLE = 2, CLK_NDATE = 6, CLK_NCOL = 8, CLK_NTZ = 17, CLK_NIDLE = 5;
 static const char* const CLK_STYLE_NAMES[CLK_NSTYLE] = {"DIGITAL", "ANALOG"};
@@ -34,7 +36,9 @@ static uint32_t gClkSynced = 0;          // epoch seconds of the last successful
 static void clockCfgLoad() {
   ClockCfg c;
   memset(&c, 0, sizeof c);
-  if (prefs.getBytes("clk", &c, sizeof c) != sizeof c) return;     // nothing saved: keep the defaults
+  size_t got = prefs.getBytes("clk", &c, sizeof c);
+  if (got < 8) return;                                             // nothing saved: keep the defaults (8 = record from before weather existed)
+  gClk.wx      = got >= sizeof c ? (uint8_t)clampi(c.wx, 0, 2) : (uint8_t)1;
   gClk.style   = (uint8_t)clampi(c.style, 0, CLK_NSTYLE - 1);
   gClk.h12     = c.h12 ? 1 : 0;
   gClk.secs    = c.secs ? 1 : 0;
@@ -86,6 +90,283 @@ static uint16_t clkCol() {
   int i = clampi(gClk.color, 0, CLK_NCOL - 1);
   return uiLight() ? CLK_COLS_LIGHT[i] : CLK_COLS[i];
 }
+
+// ------------------------------------------------------------------ weather (Open-Meteo)
+// One city per time zone (the screensaver already knows the zone). UTC has no city, so no weather there.
+static const float CLK_TZ_LAT[CLK_NTZ] = {999.f, 51.51f, 48.86f, 37.98f, 55.76f, 25.20f, 28.61f, 13.76f, 39.90f,
+                                          35.68f, -33.87f, -36.85f, -23.55f, 40.71f, 41.88f, 39.74f, 34.05f};
+static const float CLK_TZ_LON[CLK_NTZ] = {0.f, -0.13f, 2.35f, 23.73f, 37.62f, 55.27f, 77.21f, 100.50f, 116.41f,
+                                          139.69f, 151.21f, 174.76f, -46.63f, -74.01f, -87.63f, -104.99f, -118.24f};
+static const char* const CLK_WX_UNIT_NAMES[3] = {"OFF", "CELSIUS", "FAHRENHEIT"};
+static const uint32_t WX_REFRESH_MS = 30UL * 60UL * 1000UL;   // normal refresh
+static const uint32_t WX_RETRY_MS = 10UL * 60UL * 1000UL;     // after a failure
+static const uint32_t WX_MAX_AGE_S = 3UL * 3600UL;            // older data is hidden rather than shown wrong
+
+struct WxData { bool have, hasHL; uint8_t code, day, tz; int16_t t10, hi10, lo10; uint32_t stamp; };   // temperatures: tenths of a degree C
+static WxData gWx = {false, false, 0, 1, 0, 0, 0, 0, 0};
+static uint32_t gWxNextMs = 0;
+
+static bool wxActive() { return gClk.wx != 0 && gClk.tz != 0 && gClk.tz < CLK_NTZ; }
+static bool wxValid() {
+  if (!wxActive() || !gWx.have || gWx.tz != gClk.tz) return false;
+  uint32_t now = (uint32_t)netTimeFn(nullptr);
+  return now >= gWx.stamp && now - gWx.stamp < WX_MAX_AGE_S;
+}
+
+enum { WXK_CLEAR, WXK_PARTLY, WXK_CLOUD, WXK_FOG, WXK_RAIN, WXK_SNOW, WXK_STORM };
+// WMO weather code -> icon kind + short name (<= 8 characters, so it fits beside the analog face)
+static int wxKind(int code, const char** name) {
+  const char* n = "";
+  int k = WXK_CLOUD;
+  if (code == 0) { n = "Clear"; k = WXK_CLEAR; }
+  else if (code == 1) { n = "Fair"; k = WXK_CLEAR; }
+  else if (code == 2) { n = "P.Cloudy"; k = WXK_PARTLY; }
+  else if (code == 3) { n = "Overcast"; k = WXK_CLOUD; }
+  else if (code == 45 || code == 48) { n = "Fog"; k = WXK_FOG; }
+  else if (code >= 51 && code <= 57) { n = "Drizzle"; k = WXK_RAIN; }
+  else if (code >= 61 && code <= 67) { n = "Rain"; k = WXK_RAIN; }
+  else if (code >= 71 && code <= 77) { n = "Snow"; k = WXK_SNOW; }
+  else if (code >= 80 && code <= 82) { n = "Showers"; k = WXK_RAIN; }
+  else if (code == 85 || code == 86) { n = "Snow"; k = WXK_SNOW; }
+  else if (code >= 95 && code <= 99) { n = "Storm"; k = WXK_STORM; }
+  if (name) *name = n;
+  return k;
+}
+
+// Temperature in the chosen unit, rounded; never "-0".
+static int wxShow(int t10) {
+  float v = (float)t10 / 10.0f;
+  if (gClk.wx == 2) v = v * 1.8f + 32.0f;
+  return (int)floorf(v + 0.5f);
+}
+
+// ---- parsing (the body is small: a few hundred bytes)
+static bool wxNum(const char* js, const char* key, float* out) {
+  const char* p;
+  if (!jsonFind(js, key, &p)) return false;
+  if (*p == '[') p++;
+  char* end;
+  double v = strtod(p, &end);
+  if (end == p || !(v > -100.0 && v < 1000.0)) return false;
+  *out = (float)v;
+  return true;
+}
+static int16_t wxTenths(float c) {
+  if (c < -90.f) c = -90.f;
+  if (c > 70.f) c = 70.f;
+  return (int16_t)floorf(c * 10.0f + 0.5f);
+}
+// Fill d from an Open-Meteo forecast body. Needs current.temperature_2m and current.weather_code.
+static bool wxParse(const char* body, WxData& d) {
+  const char* cur;
+  if (!jsonFind(body, "current", &cur) || *cur != '{') return false;
+  float t, code, day = 1;
+  if (!wxNum(cur, "temperature_2m", &t) || !wxNum(cur, "weather_code", &code)) return false;
+  wxNum(cur, "is_day", &day);
+  memset(&d, 0, sizeof d);
+  d.t10 = wxTenths(t);
+  d.code = (uint8_t)clampi((int)code, 0, 255);
+  d.day = day >= 0.5f ? 1 : 0;
+  const char* dl;
+  float hi, lo;
+  if (jsonFind(body, "daily", &dl) && *dl == '{' && wxNum(dl, "temperature_2m_max", &hi) && wxNum(dl, "temperature_2m_min", &lo)) {
+    d.hi10 = wxTenths(hi);
+    d.lo10 = wxTenths(lo);
+    d.hasHL = true;
+  }
+  d.have = true;
+  return true;
+}
+
+static bool wxFetch(int tz, WxData& out) {
+  if (tz <= 0 || tz >= CLK_NTZ) return false;
+  char url[200];
+  snprintf(url, sizeof url,
+           "https://api.open-meteo.com/v1/forecast?latitude=%.2f&longitude=%.2f&current=temperature_2m,weather_code,is_day"
+           "&daily=temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=1",
+           (double)CLK_TZ_LAT[tz], (double)CLK_TZ_LON[tz]);
+  WiFiClientSecure client;
+  client.setCACertBundle(hubRootBundle);
+  HTTPClient http;
+  http.setTimeout(7000);
+  http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+  if (!http.begin(client, url)) return false;
+  int code = http.GET();
+  if (code != HTTP_CODE_OK) { http.end(); return false; }
+  String body = http.getString();
+  http.end();
+  if (body.length() > 4000) return false;
+  if (!wxParse(body.c_str(), out)) return false;
+  out.tz = (uint8_t)tz;
+  out.stamp = (uint32_t)netTimeFn(nullptr);
+  return true;
+}
+
+// Join the saved Wi-Fi without drawing anything. 1 = connected, 0 = failed, 2 = the user touched the screen (abort).
+static int wxConnectSilent(const WifiCreds& c) {
+  WiFi.mode(WIFI_STA);
+  WiFi.disconnect();
+  WiFi.begin(c.ssid, c.pass);
+  uint32_t t0 = millis();
+  while (WiFi.status() != WL_CONNECTED) {
+    netFrame();
+    if (touch.pressed || touch.down) return 2;
+    if (millis() - t0 > 9000) return 0;
+  }
+  return 1;
+}
+// Refresh the weather now (blocking for a few seconds). 1 = updated, 0 = failed, 2 = interrupted by a touch.
+static int wxRefresh() {
+  WifiCreds c;
+  if (!wifiLoadCreds(c)) return 0;
+  int up = wxConnectSilent(c);
+  int res = up == 2 ? 2 : 0;
+  if (up == 1) {
+    WxData d;
+    if (wxFetch(gClk.tz, d)) { gWx = d; res = 1; }
+  }
+  wifiOff();
+  return res;
+}
+// When the next refresh is due, given what is cached.
+static void wxSchedule(bool afterAttempt, bool ok) {
+  if (afterAttempt) { gWxNextMs = millis() + (ok ? WX_REFRESH_MS : WX_RETRY_MS); return; }
+  uint32_t now = (uint32_t)netTimeFn(nullptr);
+  if (gWx.have && gWx.tz == gClk.tz && now >= gWx.stamp && now - gWx.stamp < WX_REFRESH_MS / 1000UL)
+    gWxNextMs = millis() + WX_REFRESH_MS - (now - gWx.stamp) * 1000UL;
+  else
+    gWxNextMs = millis();
+}
+static bool wxDue() { return wxActive() && (int32_t)(millis() - gWxNextMs) >= 0; }
+
+// ---- drawing
+static void wxCloud(int cx, int cy, uint16_t col) {
+  tft.fillCircle(cx - 8, cy + 2, 6, col);
+  tft.fillCircle(cx, cy - 3, 8, col);
+  tft.fillCircle(cx + 9, cy + 3, 5, col);
+  tft.fillRect(cx - 8, cy + 2, 18, 7, col);
+}
+static void wxSun(int cx, int cy, int r, bool rays, uint16_t col) {
+  tft.fillCircle(cx, cy, r, col);
+  if (!rays) return;
+  for (int i = 0; i < 8; i++) {
+    float a = (float)i * CLK_PI / 4.0f;
+    int x0 = cx + (int)floorf(cosf(a) * (float)(r + 3) + 0.5f), y0 = cy + (int)floorf(sinf(a) * (float)(r + 3) + 0.5f);
+    int x1 = cx + (int)floorf(cosf(a) * (float)(r + 6) + 0.5f), y1 = cy + (int)floorf(sinf(a) * (float)(r + 6) + 0.5f);
+    tft.drawLine(x0, y0, x1, y1, col);
+  }
+}
+static void wxMoon(int cx, int cy, int r, uint16_t col) {
+  tft.fillCircle(cx, cy, r, col);
+  tft.fillCircle(cx + r / 2 + 1, cy - r / 3, r - 1, thBg());
+}
+// Icon drawn inside a box of about 36 x 32 centred on (cx, cy).
+static void wxIcon(int cx, int cy, int kind, bool day) {
+  bool lt = uiLight();
+  uint16_t sunC = lt ? RGB565(225, 150, 0) : C_GOLD, moonC = lt ? RGB565(110, 120, 165) : RGB565(235, 235, 175);
+  uint16_t cloudC = lt ? RGB565(120, 130, 150) : RGB565(190, 200, 215), blueC = lt ? RGB565(0, 100, 200) : RGB565(70, 150, 255);
+  uint16_t snowC = lt ? RGB565(70, 130, 180) : C_WHITE;
+  switch (kind) {
+    case WXK_CLEAR:
+      if (day) wxSun(cx, cy, 8, true, sunC); else wxMoon(cx, cy, 10, moonC);
+      break;
+    case WXK_PARTLY:
+      if (day) wxSun(cx - 8, cy - 6, 6, true, sunC); else wxMoon(cx - 8, cy - 6, 7, moonC);
+      wxCloud(cx + 3, cy + 4, cloudC);
+      break;
+    case WXK_CLOUD:
+      wxCloud(cx, cy, cloudC);
+      break;
+    case WXK_FOG:
+      for (int i = 0; i < 4; i++) tft.fillRect(cx - 14 + (i % 2) * 3, cy - 10 + i * 6, 24, 3, cloudC);
+      break;
+    case WXK_RAIN:
+      wxCloud(cx, cy - 5, cloudC);
+      for (int i = 0; i < 3; i++) tft.drawLine(cx - 9 + i * 8, cy + 7, cx - 11 + i * 8, cy + 13, blueC);
+      for (int i = 0; i < 3; i++) tft.drawLine(cx - 8 + i * 8, cy + 7, cx - 10 + i * 8, cy + 13, blueC);
+      break;
+    case WXK_SNOW:
+      wxCloud(cx, cy - 5, cloudC);
+      for (int i = 0; i < 3; i++) tft.fillCircle(cx - 8 + i * 8, cy + 10, 2, snowC);
+      break;
+    default:   // storm
+      wxCloud(cx, cy - 5, cloudC);
+      tft.fillTriangle(cx + 1, cy + 3, cx - 5, cy + 11, cx + 1, cy + 11, sunC);
+      tft.fillTriangle(cx + 1, cy + 8, cx + 7, cy + 8, cx - 2, cy + 15, sunC);
+      break;
+  }
+}
+// "12" + small ring + "C" starting at x (left edge), vertically centred on cy. Returns the width used.
+static int wxDrawTemp(int x, int cy, int t10, uint16_t col, bool draw) {
+  char num[8];
+  snprintf(num, sizeof num, "%d", wxShow(t10));
+  const char* u = gClk.wx == 2 ? "F" : "C";
+  int wn = tft.textWidth(num, 4), wu = tft.textWidth(u, 2);
+  if (draw) {
+    text(num, x, cy, 4, col, ML_DATUM);
+    tft.drawCircle(x + wn + 4, cy - 8, 2, col);
+    text(u, x + wn + 8, cy - 2, 2, col, ML_DATUM);
+  }
+  return wn + 8 + wu;
+}
+static uint16_t wxHiCol() { return uiLight() ? RGB565(200, 70, 0) : C_ORANGE; }
+static uint16_t wxLoCol() { return uiLight() ? RGB565(0, 100, 200) : RGB565(90, 170, 255); }
+
+// What is on the screen now, so it is only repainted when something changed.
+static struct { int8_t on; WxData d; uint8_t unit; } clkWxShown;
+static bool wxSame(const WxData& a, const WxData& b) {
+  return a.have == b.have && a.hasHL == b.hasHL && a.code == b.code && a.day == b.day && a.tz == b.tz &&
+         a.t10 == b.t10 && a.hi10 == b.hi10 && a.lo10 == b.lo10;
+}
+
+// Digital face: one centred row along the bottom: icon, temperature, condition, high / low.
+static void wxDrawRow(int cy) {
+  tft.fillRect(0, cy - 16, SCR_W, 34, thBg());
+  const char* name;
+  int kind = wxKind(gWx.code, &name);
+  char hi[12], lo[12];
+  snprintf(hi, sizeof hi, "H%d", wxShow(gWx.hi10));
+  snprintf(lo, sizeof lo, "L%d", wxShow(gWx.lo10));
+  int wT = wxDrawTemp(0, cy, gWx.t10, 0, false);
+  int wC = name[0] ? tft.textWidth(name, 2) : 0;
+  int wH = gWx.hasHL ? tft.textWidth(hi, 2) + 8 + tft.textWidth(lo, 2) : 0;
+  int total = 36 + 8 + wT + (wC ? 14 + wC : 0) + (wH ? 14 + wH : 0);
+  if (total > SCR_W - 8) { wC = 0; total = 36 + 8 + wT + (wH ? 14 + wH : 0); }
+  int x = (SCR_W - total) / 2;
+  wxIcon(x + 18, cy, kind, gWx.day != 0);
+  x += 36 + 8;
+  wxDrawTemp(x, cy, gWx.t10, thText(), true);
+  x += wT;
+  if (wC) { x += 14; text(name, x, cy, 2, thMute(), ML_DATUM); x += wC; }
+  if (wH) {
+    x += 14;
+    text(hi, x, cy, 2, wxHiCol(), ML_DATUM);
+    x += tft.textWidth(hi, 2) + 8;
+    text(lo, x, cy, 2, wxLoCol(), ML_DATUM);
+  }
+}
+static int clkAnaCy();
+// Analog face: icon + temperature on the left, condition and high / low on the right of the dial.
+static void wxDrawSides(int cy) {
+  tft.fillRect(0, cy - 46, 74, 92, thBg());
+  tft.fillRect(SCR_W - 74, cy - 46, 74, 92, thBg());
+  const char* name;
+  int kind = wxKind(gWx.code, &name);
+  wxIcon(37, cy - 18, kind, gWx.day != 0);
+  int wT = wxDrawTemp(0, cy, gWx.t10, 0, false);
+  wxDrawTemp(37 - wT / 2, cy + 20, gWx.t10, thText(), true);
+  int rx = SCR_W - 37;
+  if (name[0]) text(name, rx, cy - 20, 2, thMute(), MC_DATUM);
+  if (gWx.hasHL) {
+    char b[12];
+    snprintf(b, sizeof b, "H%d", wxShow(gWx.hi10));
+    text(b, rx, cy + 4, 2, wxHiCol(), MC_DATUM);
+    snprintf(b, sizeof b, "L%d", wxShow(gWx.lo10));
+    text(b, rx, cy + 24, 2, wxLoCol(), MC_DATUM);
+  }
+}
+static const int WX_ROW_Y = 212;   // centre of the digital weather row
+static void wxClearShown() { memset(&clkWxShown, 0, sizeof clkWxShown); clkWxShown.on = -1; }
 
 // ------------------------------------------------------------------ date text
 static void clkDateStr(const struct tm& t, int fmt, char* out, size_t n) {
@@ -189,6 +470,7 @@ static void clkResetCaches() {
   clkDateKey = -1;
   clkHandKey = -1;
   clkHandOn = false;
+  wxClearShown();
 }
 
 static void clkDigital(const struct tm& t) {
@@ -234,7 +516,7 @@ static void clkThick(int x0, int y0, int x1, int y1, int w, uint16_t c) {
     else       { tft.drawLine(x0 - i, y0, x1 - i, y1, c); tft.drawLine(x0 + i, y0, x1 + i, y1, c); }
   }
 }
-static int clkAnaR() { return gClk.dateFmt != 0 ? 84 : 108; }
+static int clkAnaR() { return (gClk.dateFmt != 0 || wxActive()) ? 84 : 108; }
 static int clkAnaCy() { return gClk.dateFmt != 0 ? 94 : SCR_H / 2; }
 static const int CLK_HAND_W[3] = {7, 5, 2};
 
@@ -303,6 +585,19 @@ static void clockUpdate(const struct tm& t) {
       clkDrawDate(t, gClk.style == 1 ? 208 : clkLayout().dateY);
     }
   }
+  bool on = wxValid();
+  bool was = clkWxShown.on == 1;
+  if (on != was || (on && (!wxSame(gWx, clkWxShown.d) || clkWxShown.unit != gClk.wx))) {
+    if (on) {
+      if (gClk.style == 1) wxDrawSides(clkAnaCy()); else wxDrawRow(WX_ROW_Y);
+    } else {                                           // data went stale or was switched off: wipe it
+      if (gClk.style == 1) { int cy = clkAnaCy(); tft.fillRect(0, cy - 46, 74, 92, thBg()); tft.fillRect(SCR_W - 74, cy - 46, 74, 92, thBg()); }
+      else tft.fillRect(0, WX_ROW_Y - 16, SCR_W, 34, thBg());
+    }
+    clkWxShown.on = on ? 1 : 0;
+    clkWxShown.d = gWx;
+    clkWxShown.unit = gClk.wx;
+  }
 }
 
 // The screensaver itself. autostart = started by the idle timer (never asks for Wi-Fi). A touch ends it.
@@ -313,11 +608,20 @@ static void clockRun(bool autostart) {
   gBright = (uint8_t)clampi(gClk.bright, 1, 4);
   applyBrightness();
   netWaitRelease();
+  wxSchedule(false, false);
   bool first = true;
   int lastSec = -1;
   for (;;) {
     netFrame();
     if (touch.pressed) break;
+    if (!first && wxDue()) {                         // the clock is already up; freshen the weather (a few seconds, blocking)
+      int r = wxRefresh();
+      if (r == 2) break;                             // touched while connecting
+      wxSchedule(true, r == 1);
+      netFrame();
+      if (touch.pressed || touch.down) break;        // touched during the download
+      lastSec = -1;
+    }
     time_t now = netTimeFn(nullptr);
     struct tm t;
     localtime_r(&now, &t);
@@ -332,8 +636,8 @@ static void clockRun(bool autostart) {
 }
 
 // ------------------------------------------------------------------ customisation screen
-static const int CLK_ROWS = 8;
-static const char* const CLK_ROW_NAMES[CLK_ROWS] = {"Style", "Time format", "Seconds", "Date", "Colour", "Brightness", "Time zone", "Auto-start"};
+static const int CLK_ROWS = 9, CLK_ROW_H = 23;
+static const char* const CLK_ROW_NAMES[CLK_ROWS] = {"Style", "Time format", "Seconds", "Date", "Colour", "Brightness", "Time zone", "Weather", "Auto-start"};
 
 static void clkRowLabel(int row, char* out, size_t n) {
   switch (row) {
@@ -344,19 +648,20 @@ static void clkRowLabel(int row, char* out, size_t n) {
     case 4: snprintf(out, n, "%s", CLK_COL_NAMES[clampi(gClk.color, 0, CLK_NCOL - 1)]); break;
     case 5: snprintf(out, n, "%d / 4", (int)gClk.bright); break;
     case 6: snprintf(out, n, "%s", CLK_TZ_NAMES[clampi(gClk.tz, 0, CLK_NTZ - 1)]); break;
+    case 7: snprintf(out, n, "%s", (gClk.wx && gClk.tz == 0) ? "SET ZONE" : CLK_WX_UNIT_NAMES[clampi(gClk.wx, 0, 2)]); break;
     default: snprintf(out, n, "%s", CLK_IDLE_NAMES[clampi(gClk.idle, 0, CLK_NIDLE - 1)]); break;
   }
 }
 static void clkDrawRow(int row) {
-  int y = 25 + row * 26;
-  tft.fillRect(0, y, SCR_W, 26, thBg());
-  tft.fillRoundRect(6, y, SCR_W - 12, 23, 6, RGB565(22, 26, 38));
-  text(CLK_ROW_NAMES[row], 16, y + 11, 2, C_WHITE, ML_DATUM);
-  char b[16];
+  int y = 25 + row * CLK_ROW_H;
+  tft.fillRect(0, y, SCR_W, CLK_ROW_H, thBg());
+  tft.fillRoundRect(6, y, SCR_W - 12, CLK_ROW_H - 2, 6, RGB565(22, 26, 38));
+  text(CLK_ROW_NAMES[row], 16, y + 10, 2, C_WHITE, ML_DATUM);
+  char b[20];
   clkRowLabel(row, b, sizeof b);
   uint16_t bg = RGB565(40, 90, 150), fg = C_WHITE;
   if (row == 4) { bg = CLK_COLS[clampi(gClk.color, 0, CLK_NCOL - 1)]; fg = C_BLACK; }
-  button(SCR_W - 112, y + 2, 98, 19, b, bg, fg);
+  button(SCR_W - 112, y + 2, 98, CLK_ROW_H - 6, b, bg, fg);
 }
 static void clkDrawScreen() {
   hudBegin("Clock style");
@@ -374,6 +679,7 @@ static void clkChange(int row, int dir) {
     case 4: gClk.color = (uint8_t)((gClk.color + CLK_NCOL + d) % CLK_NCOL); break;
     case 5: gClk.bright = (uint8_t)((gClk.bright - 1 + 4 + d) % 4 + 1); break;
     case 6: gClk.tz = (uint8_t)((gClk.tz + CLK_NTZ + d) % CLK_NTZ); break;
+    case 7: gClk.wx = (uint8_t)((gClk.wx + 3 + d) % 3); break;
     default: gClk.idle = (uint8_t)((gClk.idle + CLK_NIDLE + d) % CLK_NIDLE); break;
   }
 }
@@ -393,7 +699,7 @@ static void clockCustomise() {
       continue;
     }
     for (int r = 0; r < CLK_ROWS; r++) {
-      if (inRect(px, py, 6, 25 + r * 26, SCR_W - 12, 25)) {
+      if (inRect(px, py, 6, 25 + r * CLK_ROW_H, SCR_W - 12, CLK_ROW_H - 1)) {
         clkChange(r, px < 150 ? -1 : 1);
         beep(1000, 20);
         clkDrawRow(r);

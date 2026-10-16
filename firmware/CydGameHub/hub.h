@@ -86,11 +86,15 @@
 #undef CLK_NTZ
 #undef CLK_PI
 #undef CLK_ROWS
+#undef CLK_ROW_H
 #undef CLK_ROW_NAMES
 #undef CLK_SEG7
 #undef CLK_STYLE_NAMES
+#undef CLK_TZ_LAT
+#undef CLK_TZ_LON
 #undef CLK_TZ_NAMES
 #undef CLK_TZ_RULES
+#undef CLK_WX_UNIT_NAMES
 #undef COL
 #undef COLS
 #undef COL_BLANK
@@ -383,6 +387,17 @@
 #undef WEIGHT
 #undef WINSC
 #undef WIN_SCORE
+#undef WXK_CLEAR
+#undef WXK_CLOUD
+#undef WXK_FOG
+#undef WXK_PARTLY
+#undef WXK_RAIN
+#undef WXK_SNOW
+#undef WXK_STORM
+#undef WX_MAX_AGE_S
+#undef WX_REFRESH_MS
+#undef WX_RETRY_MS
+#undef WX_ROW_Y
 // END-UNDEF-NET
 
 // ------------------------------------------------------------------ geometry

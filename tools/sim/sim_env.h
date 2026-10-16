@@ -16,6 +16,7 @@ WiFiClass WiFi;
 long g_netBytes = 0;
 int g_httpMode = 0;
 long g_binSize = 300000;
+const char* g_wxBody = 0;
 long g_updWritten = 0;
 bool g_updBegun = false;
 UpdateClass Update;

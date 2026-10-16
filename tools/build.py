@@ -3,8 +3,8 @@
 Build the CYD Game Hub firmware (two display variants) and put the flashable images where the
 web flasher expects them:
 
-    web/firmware/cyd-gamehub-ili9341.bin   (merged image, flash at offset 0 - used by the web flasher)
-    web/firmware/cyd-gamehub-st7789.bin
+    web/firmware/{bootloader,partitions}-<variant>.bin, boot_app0.bin, app-<variant>.bin
+        (flashed at 0x1000 / 0x8000 / 0xE000 / 0x10000 by the web flasher; NVS at 0x9000 is left alone so scores survive)
     web/manifest-ili9341.json / web/manifest-st7789.json
     web/firmware/app-ili9341.bin           (plain application image - used by over-the-air updates)
     web/firmware/app-st7789.bin
@@ -87,24 +87,13 @@ def flags(defs):
     return " ".join("-D%s=%s" % (k, v) for k, v in d.items())
 
 
-def merge_fallback(build_dir, out_bin):
-    """Used only if arduino-cli did not produce *.merged.bin: merge the pieces with esptool."""
-    def one(pattern):
-        m = glob.glob(os.path.join(build_dir, pattern))
-        if not m:
-            sys.exit("missing build output: " + pattern)
-        return m[0]
-    boot = one("*.ino.bootloader.bin")
-    part = one("*.ino.partitions.bin")
-    app = one("*.ino.bin")
+def find_boot_app0():
     home = os.path.expanduser("~")
     cands = glob.glob(os.path.join(home, ".arduino15", "packages", "esp32", "hardware", "esp32", "*", "tools", "partitions", "boot_app0.bin"))
     cands += glob.glob(os.path.join(os.environ.get("LOCALAPPDATA", "/nonexistent"), "Arduino15", "packages", "esp32", "hardware", "esp32", "*", "tools", "partitions", "boot_app0.bin"))
     if not cands:
         sys.exit("boot_app0.bin not found")
-    run([sys.executable, "-m", "esptool", "--chip", "esp32", "merge_bin", "-o", out_bin,
-         "--flash_mode", "dio", "--flash_freq", "40m", "--flash_size", "4MB",
-         "0x1000", boot, "0x8000", part, "0xe000", cands[0], "0x10000", app])
+    return cands[0]
 
 
 def main():
@@ -149,15 +138,6 @@ def build_all(a, cli, base_url):
         # Windows/Linux alike: the whole thing is ONE argv element, so no shell quoting is involved.
         run([cli, "compile", "--fqbn", FQBN, "--additional-urls", ESP32_INDEX, "--output-dir", bdir, "--warnings", "none",
              "--build-property", "compiler.cpp.extra_flags=" + extra, SKETCH])
-        merged = glob.glob(os.path.join(bdir, "*.merged.bin"))
-        dest = os.path.join(WEB, "firmware", "cyd-gamehub-%s.bin" % name)
-        if merged:
-            shutil.copyfile(merged[0], dest)
-        else:
-            merge_fallback(bdir, dest)
-        size = os.path.getsize(dest)
-        if size < 200_000:
-            sys.exit("suspiciously small image (%d bytes): %s" % (size, dest))
         # plain application image for over-the-air updates
         apps = [f for f in glob.glob(os.path.join(bdir, "*.ino.bin"))]
         if not apps:
@@ -173,22 +153,37 @@ def build_all(a, cli, base_url):
             json.dump({"version": a.version, "build": a.build, "size": app_size, "md5": md5,
                        "path": "firmware/app-%s.bin" % name}, f, indent=2)
         print("    app image %d bytes (%.0f%% of the %d byte slot)" % (app_size, 100.0 * app_size / APP_SLOT_MAX, APP_SLOT_MAX))
+        # Flash the pieces at their own offsets and leave 0x9000-0xDFFF (NVS: scores, settings, calibration) untouched.
+        # The merged image pads that gap with 0xFF, so flashing it from offset 0 used to erase everything saved.
+        fw = os.path.join(WEB, "firmware")
+        for pat, out in (("*.ino.bootloader.bin", "bootloader-%s.bin" % name), ("*.ino.partitions.bin", "partitions-%s.bin" % name)):
+            m = glob.glob(os.path.join(bdir, pat))
+            if not m:
+                sys.exit("missing build output: " + pat)
+            shutil.copyfile(m[0], os.path.join(fw, out))
+        shutil.copyfile(find_boot_app0(), os.path.join(fw, "boot_app0.bin"))   # also resets otadata so the fresh app runs
         manifest = {
             "name": "CYD Game Hub - " + v["label"],
             "version": a.version,
             "new_install_prompt_erase": False,
             "builds": [{"chipFamily": "ESP32",
-                        "parts": [{"path": "firmware/cyd-gamehub-%s.bin" % name, "offset": 0}]}],
+                        "parts": [{"path": "firmware/bootloader-%s.bin" % name, "offset": 0x1000},
+                                  {"path": "firmware/partitions-%s.bin" % name, "offset": 0x8000},
+                                  {"path": "firmware/boot_app0.bin", "offset": 0xE000},
+                                  {"path": "firmware/app-%s.bin" % name, "offset": 0x10000}]}],
         }
         with open(os.path.join(WEB, "manifest-%s.json" % name), "w") as f:
             json.dump(manifest, f, indent=2)
-        print("OK  %-8s %7d bytes -> %s" % (name, size, dest))
+        print("OK  %-8s app %d bytes" % (name, app_size))
     if a.flash:
-        img = os.path.join(WEB, "firmware", "cyd-gamehub-%s.bin" % a.only)
+        fw = os.path.join(WEB, "firmware")
         cmd = [sys.executable, "-m", "esptool", "--chip", "esp32", "--baud", "460800"]
         if a.port:
             cmd += ["--port", a.port]
-        run(cmd + ["write_flash", "0x0", img])
+        run(cmd + ["write_flash", "0x1000", os.path.join(fw, "bootloader-%s.bin" % a.only),
+                   "0x8000", os.path.join(fw, "partitions-%s.bin" % a.only),
+                   "0xe000", os.path.join(fw, "boot_app0.bin"),
+                   "0x10000", os.path.join(fw, "app-%s.bin" % a.only)])
         print("\nFlashed. The board restarts by itself; touch the three crosshairs to calibrate.")
         return
     print("\nDone. Serve the flasher locally with:  python tools/serve.py")
