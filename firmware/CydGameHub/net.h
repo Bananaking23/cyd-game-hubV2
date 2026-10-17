@@ -506,6 +506,26 @@ static bool otaInstall(const OtaInfo& info, char* err, size_t errCap) {
   return true;
 }
 
+// "Update available" pop-up: shown by the manual check and by the silent check at start-up.
+static void netOfferUpdate(const OtaInfo& info) {
+  char l1[40], l2[40], err[40];
+  snprintf(l1, sizeof l1, "New version v%s", info.version);
+  snprintf(l2, sizeof l2, "%d KB download", info.size / 1024);
+  if (!netAsk("UPDATE", C_CYAN, l1, l2, "INSTALL", "LATER")) {
+    wifiOff();
+    return;
+  }
+  if (!otaInstall(info, err, sizeof err)) {
+    wifiOff();
+    netMessage("UPDATE FAILED", C_RED, err, "Nothing was changed.");
+    return;
+  }
+  netBusy("Updated", "Restarting...");
+  beep(1500, 200);
+  delay(700);
+  ESP.restart();
+}
+
 // The whole "Check for updates" flow.
 static void netCheckForUpdates() {
   if (strlen(UPDATE_BASE_URL) == 0) {
@@ -542,37 +562,56 @@ static void netCheckForUpdates() {
     netMessage("UP TO DATE", C_GREEN, l, "Nothing to install.");
     return;
   }
-  char l1[40], l2[40];
-  snprintf(l1, sizeof l1, "New version v%s", info.version);
-  snprintf(l2, sizeof l2, "%d KB download", info.size / 1024);
-  if (!netAsk("UPDATE", C_CYAN, l1, l2, "INSTALL", "LATER")) {
-    wifiOff();
-    return;
+  netOfferUpdate(info);
+}
+
+
+// ------------------------------------------------------------------ silent check at start-up
+static uint8_t gAutoUpd = 1;                       // Settings -> Wi-Fi & updates -> "Check at start-up"
+static void autoUpdLoad() { gAutoUpd = prefs.getUChar("autoupd", 1) ? 1 : 0; }
+static void autoUpdSave() { prefs.putUChar("autoupd", gAutoUpd); }
+
+// Once per power-up, on the menu: join the saved Wi-Fi (touch the screen to skip), look for a newer build and, only if
+// there is one, show the "UPDATE" pop-up. Any problem (no Wi-Fi, no internet, server down) is silent. Returns true when a
+// newer build was found and the pop-up was shown.
+static bool netAutoCheck() {
+  if (!gAutoUpd || strlen(UPDATE_BASE_URL) == 0) return false;
+  WifiCreds c;
+  if (!wifiLoadCreds(c)) return false;
+  WiFi.mode(WIFI_STA);
+  WiFi.disconnect();
+  WiFi.begin(c.ssid, c.pass);
+  uint32_t t0 = millis();
+  while (WiFi.status() != WL_CONNECTED) {
+    netFrame();
+    if (touch.pressed || touch.down || millis() - t0 > 9000) { wifiOff(); touchClear(); return false; }
   }
-  if (!otaInstall(info, err, sizeof err)) {
-    wifiOff();
-    netMessage("UPDATE FAILED", C_RED, err, "Nothing was changed.");
-    return;
-  }
-  netBusy("Updated", "Restarting...");
-  beep(1500, 200);
-  delay(700);
-  ESP.restart();
+  OtaInfo info;
+  char err[40];
+  bool newer = netSyncClock() && otaFetchInfo(info, err, sizeof err) && info.build > HUB_BUILD;
+  if (!newer) { wifiOff(); return false; }
+  beep(1100, 60);
+  netOfferUpdate(info);                            // INSTALL restarts the board; LATER switches Wi-Fi off
+  return true;
 }
 
 // ------------------------------------------------------------------ Settings -> Wi-Fi & updates screen
+static void netDrawAutoBtn() {
+  button(20, 62, 280, 22, gAutoUpd ? "CHECK AT START-UP: ON" : "CHECK AT START-UP: OFF", gAutoUpd ? RGB565(40, 90, 150) : RGB565(70, 74, 90));
+}
 static void netDrawScreen() {
   hudBegin("Wi-Fi & updates");
   char b[48];
   snprintf(b, sizeof b, "Installed: v%s (%s)", HUB_VERSION, HUB_VARIANT);
-  text(b, 10, PF_Y + 8, 2, thText());
+  text(b, 10, PF_Y + 3, 2, thText());
   WifiCreds c;
   if (wifiLoadCreds(c)) {
     snprintf(b, sizeof b, "Wi-Fi: %.24s", c.ssid);
-    text(b, 10, PF_Y + 30, 2, thAccent());
+    text(b, 10, PF_Y + 22, 2, thAccent());
   } else {
-    text("Wi-Fi: not set up", 10, PF_Y + 30, 2, C_GREY);
+    text("Wi-Fi: not set up", 10, PF_Y + 22, 2, C_GREY);
   }
+  netDrawAutoBtn();
   button(20, 90, 280, 38, "CHECK FOR UPDATES", RGB565(30, 120, 80));
   button(20, 136, 280, 38, "CHOOSE WI-FI NETWORK", RGB565(40, 90, 150));
   button(20, 182, 280, 38, "FORGET WI-FI", RGB565(130, 50, 60));
@@ -585,7 +624,12 @@ static void netScreen() {
     if (menuHit()) { netWaitRelease(); break; }
     if (!touch.tap) continue;
     int px = touch.x, py = touch.y;
-    if (inRect(px, py, 20, 90, 280, 38)) {
+    if (inRect(px, py, 20, 62, 280, 24)) {
+      gAutoUpd ^= 1;
+      autoUpdSave();
+      beep(gAutoUpd ? 1000 : 600, 25);
+      netDrawAutoBtn();
+    } else if (inRect(px, py, 20, 90, 280, 38)) {
       touchClear();
       netCheckForUpdates();
       netDrawScreen();

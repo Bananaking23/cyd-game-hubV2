@@ -267,6 +267,7 @@ void setup() {
     if (!prefs.isKey("bgr")) gBgr = true;
   }
   clockCfgLoad();
+  autoUpdLoad();
   clockApplyTz();
   soundBegin();
   tft.init();
@@ -282,6 +283,7 @@ void setup() {
   bool force = (digitalRead(0) == LOW);
   if (force || !loadCalibration()) doCalibration();
   drawMenu();
+  if (!force && netAutoCheck()) drawMenu();      // pop-up only appears when a newer build exists
   gLastActive = millis();
 }
 

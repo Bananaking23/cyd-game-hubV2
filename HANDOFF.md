@@ -13,6 +13,7 @@ GitHub Desktop -> GitHub Pages via the Actions workflow in `.github/workflows/bu
   Reversi, Memory, Minesweeper, Lights Out, Sudoku, Slide, Jumper, Frogger, Gems, Mastermind, Fleet; each is a game_*.h header with its own namespace, registered in games.h; 8 tiles per menu page = 3 pages; tools/sim/games_test.cpp holds their behaviour tests). Easy/Normal/Hard with separate high scores per difficulty.
 - Settings is a 4x3 tile grid: Sound, Brightness, Difficulty, Rotation, Invert, Calibrate, Scores (asks first),
   Wi-Fi, Clock, Clock style, Red/Blue (ST7789 only), Theme (light/dark).
+- Start-up update check (netAutoCheck in net.h, toggle "autoupd" pref, default on): silent, pop-up only if newer.
 - Wi-Fi (on-screen keyboard, network picker, password stored unencrypted in NVS) and wireless OTA updates from the
   GitHub Pages site (`ota-<variant>.json` + `firmware/app-<variant>.bin`, size + MD5 checked, TLS via the core's cert bundle).
   Needs the `min_spiffs` partition scheme, so older boards needed one USB reflash.

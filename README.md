@@ -32,6 +32,8 @@ Push this folder to a GitHub repo, then **Settings -> Pages -> Source: GitHub Ac
 
 ## Wireless updates
 
+Once a Wi-Fi network is saved, the board also checks quietly at every power-up and shows an **UPDATE** pop-up (INSTALL / LATER) only when a newer build exists; touch the screen while it connects to skip, or switch it off with **Check at start-up** on the same screen.
+
 On the board: **Settings -> Wi-Fi & updates**. Pick a network (on-screen keyboard), then **Check for updates**. The board
 fetches `ota-<variant>.json` and `firmware/app-<variant>.bin` from the published Pages site over HTTPS (certificates
 checked against the ESP32 root bundle, firmware size + MD5 verified), installs it and restarts. Each GitHub Actions run

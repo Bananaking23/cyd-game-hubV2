@@ -26,7 +26,7 @@ static void tapHook(uint32_t ms) {
     hold = 3; gap = 9; g_simTouched = true; hold--;
   } else if (++idle > 4000) { fprintf(stderr, "script exhausted but UI still waiting - stuck?\n"); exit(2); }
 }
-static void run(const std::vector<Ev>& v) { q = v; qi = 0; hold = gap = idle = 0; g_simTouched = false; touch = TouchState{false, false, false, false, -1, 0, 0, 0, 0, 0, 0}; gMiss = 0; }
+static void run(const std::vector<Ev>& v, int lead = 0) { q = v; qi = 0; hold = idle = 0; gap = lead; g_simTouched = false; touch = TouchState{false, false, false, false, -1, 0, 0, 0, 0, 0, 0}; gMiss = 0; }
 
 static Ev keyPos(char c, bool shift, bool sym, int kind = KB_CHAR) {
   KbKey k[KB_MAXKEYS]; int n = kbBuild(k, shift, sym);
@@ -96,6 +96,23 @@ int main() {
     CHECK(!wifiLoadCreds(c), "wifi screen: FORGET WI-FI clears the saved network");
     run({Ev{160, 155}, menu, menu}); g_scanCount = 0; netScreen(); g_scanCount = 12;
     CHECK(true, "wifi screen: CHOOSE WI-FI opens and returns");
+  }
+  // 5. silent start-up check + its Settings toggle
+  { g_wifiPassOK = true; wifiSaveCreds("HomeNet", "secret123"); g_httpMode = 0; gAutoUpd = 1;
+    g_restarts = 0; g_updWritten = 0;
+    run({install}, 40); bool shown = netAutoCheck();
+    CHECK(shown && g_restarts == 1 && g_updWritten == g_binSize, "auto-check: newer build -> pop-up -> INSTALL updates and restarts");
+    g_restarts = 0; run({later}, 40); shown = netAutoCheck();
+    CHECK(shown && g_restarts == 0, "auto-check: pop-up -> LATER does nothing");
+    g_httpMode = 3; run({}); shown = netAutoCheck(); CHECK(!shown && g_restarts == 0, "auto-check: server error is silent");
+    g_httpMode = 1; run({}); shown = netAutoCheck(); CHECK(!shown, "auto-check: garbage info is silent");
+    g_httpMode = 0; g_wifiPassOK = false; run({}); shown = netAutoCheck(); CHECK(!shown, "auto-check: unreachable Wi-Fi is silent");
+    g_wifiPassOK = true; gAutoUpd = 0; run({install}); shown = netAutoCheck(); CHECK(!shown && g_restarts == 0, "auto-check: switched off -> never connects");
+    gAutoUpd = 1; wifiForget(); run({install}); shown = netAutoCheck(); CHECK(!shown, "auto-check: no saved Wi-Fi -> nothing happens");
+    wifiSaveCreds("HomeNet", "secret123");
+    g_restarts = 0; run({install}, 0); shown = netAutoCheck(); CHECK(!shown && g_restarts == 0, "auto-check: a touch while connecting skips the check");
+    run({Ev{160, 73}, menu}); netScreen(); CHECK(gAutoUpd == 0 && prefs.getUChar("autoupd", 1) == 0, "wifi screen: toggle turns the start-up check off and saves it");
+    run({Ev{160, 73}, menu}); netScreen(); CHECK(gAutoUpd == 1 && prefs.getUChar("autoupd", 0) == 1, "wifi screen: toggle turns it back on");
   }
   printf("\n%s (%d failures)\n", fails ? "NET TEST FAILED" : "net test passed", fails);
   return fails ? 1 : 0;
