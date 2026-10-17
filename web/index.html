@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CYD Game Hub Flasher</title>
-<meta name="description" content="Flash 19 touch games onto a 2.8-inch resistive-touch Cheap Yellow Display straight from your browser.">
+<meta name="description" content="Flash 24 touch games onto a 2.8-inch resistive-touch Cheap Yellow Display straight from your browser.">
 <script type="module" src="https://unpkg.com/esp-web-tools@10.0.1/dist/web/install-button.js?module"></script>
 <style>
   :root {
@@ -75,7 +75,7 @@
   <header>
     <div>
       <h1>CYD <span>Game Hub</span></h1>
-      <p class="lead">19 touch games for the 2.8&Prime; resistive-touch Cheap Yellow Display. Plug the board in with a USB cable, press a button, done. Nothing to install.</p>
+      <p class="lead">24 touch games for the 2.8&Prime; resistive-touch Cheap Yellow Display. Plug the board in with a USB cable, press a button, done. Nothing to install.</p>
     </div>
     <button class="theme" id="theme" type="button" aria-label="Toggle light or dark theme">Theme</button>
   </header>
@@ -127,7 +127,7 @@
   <h2>Clock screensaver</h2>
   <p style="color:var(--mute)">Settings has two clock tiles: <b>Clock</b> shows a full-screen clock and <b>Clock style</b> customises it &mdash; digital or analog, 12/24 hour, seconds, date format, colour, brightness, time zone, optional <b>weather</b> (temperature, conditions and today&rsquo;s high/low for your time zone&rsquo;s city or a UK/Ireland city you pick, such as Manchester, from Open-Meteo) and automatic start after a period of inactivity. The time and weather are fetched over your saved Wi-Fi.</p>
 
-  <h2>The 19 games</h2>
+  <h2>The 24 games</h2>
   <p style="color:var(--mute)">Every game has <b>Easy / Normal / Hard</b> (tap the difficulty tag in the menu header), with separate high scores for each.</p>
   <ul class="games" id="games"></ul>
 
@@ -156,7 +156,10 @@
     ["Tic-Tac-Toe", "#c9ced8", "vs the AI"], ["Connect 4", "#ff5252", "vs the AI"], ["Reversi", "#2ecc71", "tap to place, vs AI"],
     ["Memory", "#a35bff", "fewest moves"], ["Minesweeper", "#8a93a6", "tap / hold to flag"],
     ["Lights Out", "#ffd23f", "fewest moves"], ["Sudoku", "#35e0ff", "tap cell, tap number"],
-    ["Slide", "#ff9f1c", "tap to slide a line"]
+    ["Slide", "#ff9f1c", "tap to slide a line"],
+    ["Jumper", "#2ecc71", "hold to steer"], ["Frogger", "#2bb3a3", "tap / swipe to hop"],
+    ["Gems", "#ff4fd8", "swap to match 3"], ["Mastermind", "#a35bff", "crack the code"],
+    ["Fleet", "#4f7bff", "battleship vs the CPU"]
   ];
   var ul = document.getElementById("games");
   GAMES.forEach(function (g) {

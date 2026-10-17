@@ -1,5 +1,5 @@
 // =============================================================================
-//  CYD Game Hub  -  19 touch games for the ESP32-2432S028R "Cheap Yellow Display" (2.8", resistive touch)
+//  CYD Game Hub  -  24 touch games for the ESP32-2432S028R "Cheap Yellow Display" (2.8", resistive touch)
 //
 //  Menu: tap a tile to play, swipe or use < > to change page, tap the difficulty tag to cycle
 //  EASY / NORMAL / HARD, SETTINGS for sound / brightness / difficulty / flip / invert / calibration /

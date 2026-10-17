@@ -1,10 +1,10 @@
 # CYD Game Hub
 
-19 touch games for the **2.8" resistive-touch Cheap Yellow Display** (ESP32-2432S028R), with a one-click
+24 touch games for the **2.8" resistive-touch Cheap Yellow Display** (ESP32-2432S028R), with a one-click
 **browser flasher** (Chrome / Edge, Web Serial, no drivers or IDE needed beyond the USB-serial driver).
 
 Snake, Flap, Breakout, Pong, Invaders, Asteroids, Tetris, 2048, Simon, Whack-a-mole, Runner, Tic-Tac-Toe, Connect 4,
-Reversi, Memory, Minesweeper, Lights Out, Sudoku, Slide puzzle. Every game has **Easy / Normal / Hard** (tap the
+Reversi, Memory, Minesweeper, Lights Out, Sudoku, Slide puzzle, Jumper, Frogger, Gems (match-3), Mastermind and Fleet (battleship). Every game has **Easy / Normal / Hard** (tap the
 difficulty tag in the menu header, or Settings), with separate high scores per difficulty. High scores and settings
 are saved on the board.
 

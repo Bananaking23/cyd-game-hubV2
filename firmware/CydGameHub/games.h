@@ -21,6 +21,11 @@
 #include "game_lightsout.h"
 #include "game_sudoku.h"
 #include "game_slide.h"
+#include "game_jumper.h"
+#include "game_frogger.h"
+#include "game_gems.h"
+#include "game_mind.h"
+#include "game_fleet.h"
 
 //                 name          tile colour  ms  lower  init            tick            icon
 static const GameDef GAMES[] = {
@@ -43,5 +48,10 @@ static const GameDef GAMES[] = {
   {"Lights Out",  C_YELLOW,     33, true,  LightsOut::init,  LightsOut::tick,  LightsOut::icon},
   {"Sudoku",      C_CYAN,       33, true,  Sudoku::init,     Sudoku::tick,     Sudoku::icon},
   {"Slide",       C_ORANGE,     33, true,  Slide15::init,    Slide15::tick,    Slide15::icon},
+  {"Jumper",      C_GREEN,      33, false, Jumper::init,     Jumper::tick,     Jumper::icon},
+  {"Frogger",     C_TEAL,       33, false, Frogger::init,    Frogger::tick,    Frogger::icon},
+  {"Gems",        C_MAGENTA,    33, false, Gems::init,       Gems::tick,       Gems::icon},
+  {"Mastermind",  C_PURPLE,     33, true,  Mind::init,       Mind::tick,       Mind::icon},
+  {"Fleet",       C_BLUE,       33, true,  Fleet::init,      Fleet::tick,      Fleet::icon},
 };
 static const int NUM_GAMES = (int)(sizeof(GAMES) / sizeof(GAMES[0]));

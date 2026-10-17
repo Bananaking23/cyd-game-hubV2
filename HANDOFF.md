@@ -9,8 +9,8 @@ GitHub Desktop -> GitHub Pages via the Actions workflow in `.github/workflows/bu
 **2-USB board (USB-C + micro-USB, ST7789)** and flashes the `st7789` variant.
 
 ## Current features (v11, version 2.0.x)
-- 19 games (Snake, Flap, Breakout, Pong, Invaders, Asteroids, Tetris, 2048, Simon, Whack, Runner, Tic-Tac-Toe, Connect 4,
-  Reversi, Memory, Minesweeper, Lights Out, Sudoku, Slide). Easy/Normal/Hard with separate high scores per difficulty.
+- 24 games (Snake, Flap, Breakout, Pong, Invaders, Asteroids, Tetris, 2048, Simon, Whack, Runner, Tic-Tac-Toe, Connect 4,
+  Reversi, Memory, Minesweeper, Lights Out, Sudoku, Slide, Jumper, Frogger, Gems, Mastermind, Fleet; each is a game_*.h header with its own namespace, registered in games.h; 8 tiles per menu page = 3 pages; tools/sim/games_test.cpp holds their behaviour tests). Easy/Normal/Hard with separate high scores per difficulty.
 - Settings is a 4x3 tile grid: Sound, Brightness, Difficulty, Rotation, Invert, Calibrate, Scores (asks first),
   Wi-Fi, Clock, Clock style, Red/Blue (ST7789 only), Theme (light/dark).
 - Wi-Fi (on-screen keyboard, network picker, password stored unencrypted in NVS) and wireless OTA updates from the

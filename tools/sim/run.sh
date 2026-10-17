@@ -9,3 +9,5 @@ g++ $FLAGS -DUPDATE_BASE_URL='"https://example.invalid/cyd-game-hub/"' tools/sim
 timeout 300 /tmp/cydnet
 g++ $FLAGS -DHUB_VARIANT='"st7789"' tools/sim/clock_test.cpp tools/sim/sim_bundle.cpp -o /tmp/cydclock || exit 1
 timeout 300 /tmp/cydclock
+g++ $FLAGS tools/sim/games_test.cpp tools/sim/sim_bundle.cpp -o /tmp/cydgames || exit 1
+timeout 300 /tmp/cydgames
